@@ -1,0 +1,15 @@
+{
+  "name": "Интерактивный блокнот",
+  "short_name": "Блокнот",
+  "description": "Истории со звуком и фото — офлайн",
+  "start_url": "index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0d1418",
+  "theme_color": "#0d1418",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
