@@ -1,0 +1,2620 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0d1418">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<title>Интерактивный блокнот</title>
+<style>
+/* ================= ПАЛИТРА И БАЗА ================= */
+:root{
+  --bg:#0d1418; --bg2:#121b21; --panel:#16212a; --panel2:#1c2933;
+  --line:rgba(233,240,236,.09);
+  --ink:#e9efe9; --muted:#8fa1a8;
+  --amber:#e9b44c; --amber2:#f6d07c;
+  --teal:#63c1ac; --danger:#e07856; --rose:#e0a3b8;
+  --mint:#9fd0ac;
+  --rule:rgba(233,240,236,.05);
+  --sab:env(safe-area-inset-bottom,0px);
+  --navpad:0px;
+  --font-display:'Iowan Old Style','Palatino Linotype','Book Antiqua',Georgia,'Noto Serif',serif;
+  --font-ui:'Avenir Next','Segoe UI',system-ui,-apple-system,Roboto,'Helvetica Neue',Arial,sans-serif;
+  --ease-pop:cubic-bezier(.34,1.56,.64,1);
+  --ease-soft:cubic-bezier(.22,.9,.3,1);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-ui);overflow:hidden;overscroll-behavior:none}
+body.nav-pad{--navpad:42px}
+::selection{background:rgba(233,180,76,.3)}
+button{font-family:inherit}
+
+/* ================= ФОН (статичный) ================= */
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:radial-gradient(rgba(233,240,236,.05) 1px,transparent 1.3px);
+  background-size:22px 22px;opacity:.55}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+    radial-gradient(620px 420px at 85% -8%, rgba(233,180,76,.11), transparent 62%),
+    radial-gradient(520px 400px at -8% 105%, rgba(99,193,172,.10), transparent 62%),
+    radial-gradient(420px 320px at 100% 70%, rgba(224,163,184,.06), transparent 60%)}
+
+.app{position:relative;z-index:1;max-width:620px;margin:0 auto;
+  height:100vh;height:100dvh;display:flex;flex-direction:column;
+  padding-left:max(env(safe-area-inset-left),0px);padding-right:max(env(safe-area-inset-right),0px)}
+@media (orientation:landscape){.app{max-width:860px}}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}}
+
+/* ================= ШАПКА ================= */
+.app-header{padding-top:max(env(safe-area-inset-top), 40px);
+  padding-left:18px;padding-right:18px;padding-bottom:14px;animation:rise .55s var(--ease-soft) both}
+.masthead{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+.overline{display:inline-flex;align-items:center;border:0;background:none;padding:0;margin:0 0 7px;
+  font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--amber);cursor:pointer;
+  transition:color .2s}
+.overline::before{content:'';width:22px;height:1px;background:var(--amber);margin-right:8px;opacity:.7}
+.overline:active{color:var(--amber2)}
+.chip-count{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;
+  padding:0 5px;margin-left:8px;border-radius:999px;background:rgba(233,180,76,.15);
+  color:var(--amber2);font-size:10px;letter-spacing:0;font-weight:700;
+  transition:transform .3s var(--ease-pop)}
+.chip-count.pop{transform:scale(1.3)}
+h1{margin:0;font-family:var(--font-display);font-weight:600;
+  font-size:clamp(26px,7.4vw,34px);line-height:1.02}
+.h1-em{position:relative;display:inline-block}
+.h1-em em{font-style:italic;color:var(--amber2)}
+.h1-em svg{position:absolute;left:2%;bottom:-7px;width:96%;height:8px;overflow:visible}
+.h1-em path{fill:none;stroke:var(--amber);stroke-width:2;stroke-linecap:round;
+  stroke-dasharray:140;stroke-dashoffset:140;animation:draw 1s ease .45s forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.mast-right{display:flex;flex-direction:column;align-items:flex-end;gap:7px;padding-bottom:4px}
+.eq{display:flex;align-items:flex-end;gap:3px;height:18px;pointer-events:none}
+.eq i{width:3px;height:100%;border-radius:2px;background:var(--amber);transform-origin:bottom;
+  transform:scaleY(.25);opacity:.4;animation:eq .8s ease-in-out infinite alternate;animation-play-state:paused}
+.eq i:nth-child(2){animation-delay:.15s}.eq i:nth-child(3){animation-delay:.3s}
+.eq i:nth-child(4){animation-delay:.1s}.eq i:nth-child(5){animation-delay:.25s}
+@keyframes eq{from{transform:scaleY(.2)}to{transform:scaleY(1)}}
+body.playing .eq i{animation-play-state:running;opacity:1}
+.chip{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:999px;
+  padding:3px 9px;font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.chip b{width:6px;height:6px;border-radius:50%;background:var(--teal);animation:blink 2.4s ease-in-out infinite}
+@keyframes blink{50%{opacity:.3}}
+
+/* ================= ПАНЕЛЬ ИНСТРУМЕНТОВ ================= */
+.toolbar{margin:0 16px;background:var(--panel);border:1px solid var(--line);border-radius:14px;
+  padding:10px;display:flex;flex-direction:column;gap:8px;
+  box-shadow:0 10px 26px rgba(0,0,0,.35);animation:rise .55s var(--ease-soft) .08s both}
+.row{display:flex;gap:8px;align-items:stretch}
+.select-wrap{flex:1;position:relative}
+.select-wrap::before{content:'✦';position:absolute;left:11px;top:50%;transform:translateY(-50%);
+  color:var(--amber);font-size:11px;pointer-events:none}
+.select-wrap::after{content:'▾';position:absolute;right:12px;top:50%;transform:translateY(-50%);
+  color:var(--amber);pointer-events:none;font-size:13px}
+select{width:100%;appearance:none;-webkit-appearance:none;font:inherit;font-size:16px;color:var(--ink);
+  background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+  padding:10px 32px 10px 30px;outline:none;transition:border-color .25s,box-shadow .25s}
+select:focus-visible{border-color:rgba(233,180,76,.55);box-shadow:0 0 0 3px rgba(233,180,76,.12)}
+.icon-btn{width:42px;flex:0 0 42px;display:inline-flex;align-items:center;justify-content:center;
+  border-radius:10px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);
+  font-size:16px;cursor:pointer;transition:transform .12s,background .2s,color .2s,border-color .2s}
+.icon-btn:active{transform:scale(.9) rotate(8deg)}
+.icon-btn.pencil{color:var(--amber)}
+.icon-btn.share{color:var(--teal)}
+.icon-btn:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.kb-round{width:42px;flex:0 0 42px;border-radius:50%;border:1px solid var(--line);
+  background:var(--panel2);color:var(--ink);font-size:16px;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;position:relative;
+  transition:transform .12s,color .2s,border-color .2s}
+.kb-round:active{transform:scale(.86)}
+.kb-round:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.kb-sym{position:relative;line-height:1}
+.kb-round.kb-off{color:var(--muted);border-color:rgba(224,120,86,.5)}
+.kb-round.kb-off .kb-sym::after{content:'';position:absolute;left:-3px;right:-3px;top:50%;
+  height:1.5px;background:var(--danger);transform:rotate(-20deg)}
+.btn{position:relative;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  flex:1;border-radius:10px;padding:11px 8px;font-size:12.5px;font-weight:600;letter-spacing:.02em;
+  border:1px solid var(--line);background:var(--panel2);color:var(--ink);cursor:pointer;user-select:none;
+  transition:transform .13s var(--ease-soft),background .2s,border-color .2s,box-shadow .25s}
+.btn:active{transform:scale(.94) translateY(1px)}
+.btn:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.btn.primary{background:linear-gradient(180deg,var(--amber2),var(--amber));color:#221604;
+  border-color:transparent;font-weight:700;box-shadow:0 4px 16px rgba(233,180,76,.22)}
+.btn.primary:active{box-shadow:0 1px 6px rgba(233,180,76,.2)}
+.btn.primary.saved{background:linear-gradient(180deg,#9fe3cf,var(--teal))}
+.btn.teal{color:var(--teal);border-color:rgba(99,193,172,.4)}
+.btn.teal:active{background:rgba(99,193,172,.12)}
+.btn.danger-fill{background:rgba(224,120,86,.16);border-color:rgba(224,120,86,.55);color:var(--danger)}
+.btn.danger-fill:active{background:rgba(224,120,86,.28)}
+.btn .ok-ico{display:none}
+.btn.saved .ok-ico{display:inline;animation:pop .4s var(--ease-pop)}
+.btn.saved .save-label,.btn.saved .save-ico{display:none}
+
+.ripple-host{position:relative;overflow:hidden}
+.ripple{position:absolute;border-radius:50%;pointer-events:none;z-index:0;
+  background:radial-gradient(circle,rgba(255,255,255,.4) 0%,rgba(255,255,255,.14) 60%,transparent 70%);
+  transform:translate(-50%,-50%) scale(0);opacity:.85;animation:ripple .55s ease-out forwards}
+.btn.primary .ripple,.icon-btn.pencil .ripple{background:radial-gradient(circle,rgba(90,55,5,.35),transparent 70%)}
+@keyframes ripple{to{transform:translate(-50%,-50%) scale(1);opacity:0}}
+
+/* ================= РЕДАКТОР ================= */
+#scrollArea{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 16px 10px;
+  overscroll-behavior-y:none;animation:rise .55s var(--ease-soft) .16s both}
+.ed-top{display:flex;align-items:center;gap:10px;margin:0 2px 8px}
+.ed-hint{font-size:10.5px;color:var(--muted);letter-spacing:.03em}
+@media (max-width:400px){.ed-hint{display:none}}
+#editor{min-height:100%;outline:none;border:1px solid var(--line);border-radius:12px;
+  padding:18px 16px 28px 52px;font-family:var(--font-display);font-size:17px;line-height:34px;
+  color:var(--ink);caret-color:var(--amber);word-break:break-word;background-color:var(--bg2);
+  background-image:
+    linear-gradient(90deg,transparent 37px,rgba(224,120,86,.3) 37px,rgba(224,120,86,.3) 38.5px,transparent 38.5px),
+    repeating-linear-gradient(180deg,transparent 0,transparent 33px,var(--rule) 33px,var(--rule) 34px);
+  background-attachment:local,local;transition:border-color .25s,box-shadow .25s}
+#editor:focus{border-color:rgba(233,180,76,.45);
+  box-shadow:0 0 0 3px rgba(233,180,76,.08),0 12px 32px rgba(0,0,0,.3)}
+#editor.is-empty::before{content:attr(data-placeholder);color:var(--muted);font-style:italic;pointer-events:none}
+#editor.page-anim{animation:pageIn .55s var(--ease-soft)}
+@keyframes pageIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+#editor.shake{animation:shake .45s}
+@keyframes shake{20%{transform:translateX(-6px)}40%{transform:translateX(6px)}
+  60%{transform:translateX(-4px)}80%{transform:translateX(3px)}}
+
+/* ================= РЕДАКТОР СЦЕН ================= */
+.scc{background:var(--bg2);border:1px solid var(--line);border-radius:12px;margin-bottom:12px;
+  overflow:hidden;animation:pageIn .4s var(--ease-soft)}
+.scc-bar{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;
+  background:var(--panel);border-bottom:1px solid var(--line)}
+.scc-num{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--amber)}
+.scc-tools{display:flex;gap:6px}
+.scc-tools button{width:26px;height:26px;border-radius:7px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--muted);font-size:12px;cursor:pointer;
+  transition:transform .12s,color .2s}
+.scc-tools button:active{transform:scale(.85)}
+.scc-tools button.t-del{color:var(--danger)}
+.scc-shelf{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:10px 12px;
+  border-bottom:1px dashed var(--line);min-height:24px}
+.scc-shelf .audio-btn,.scc-shelf .image-btn,.scc-shelf .stoploop-btn{margin:0}
+.scc-add{display:inline-flex;gap:6px;margin-left:auto}
+.scc-add button{width:30px;height:30px;border-radius:50%;border:1px dashed rgba(233,240,236,.25);
+  background:transparent;color:var(--muted);font-size:13px;cursor:pointer;
+  transition:transform .12s,color .2s,border-color .2s}
+.scc-add button:active{transform:scale(.85);color:var(--amber);border-color:rgba(233,180,76,.55)}
+.scc-text{min-height:64px;padding:12px 14px 16px 46px;outline:none;
+  font-family:var(--font-display);font-size:17px;line-height:30px;word-break:break-word;
+  caret-color:var(--amber);
+  background-image:linear-gradient(90deg,transparent 32px,rgba(224,120,86,.28) 32px,rgba(224,120,86,.28) 33.5px,transparent 33.5px);
+  transition:background-color .25s}
+.scc-text:focus{background-color:rgba(233,180,76,.035)}
+.scc-text:empty::before{content:attr(data-placeholder);color:var(--muted);font-style:italic;pointer-events:none}
+.add-scene{width:100%;padding:12px;border-radius:12px;border:1px dashed rgba(233,240,236,.22);
+  background:transparent;color:var(--muted);font-size:13px;cursor:pointer;margin-bottom:12px;
+  transition:color .2s,border-color .2s,transform .12s}
+.add-scene:active{transform:scale(.98);color:var(--amber);border-color:rgba(233,180,76,.5)}
+
+/* ================= СПОЙЛЕР ================= */
+.spoiler{position:relative;display:inline;padding:1px 4px;margin:0 1px;border-radius:5px;cursor:pointer}
+.spoiler::after{content:'';position:absolute;inset:-2px -1px;border-radius:5px;z-index:2;
+  pointer-events:none;transform-origin:right center;
+  background:repeating-linear-gradient(45deg,#26333e 0 6px,#1b2530 6px 12px);
+  box-shadow:inset 0 0 0 1px rgba(233,240,236,.14),0 1px 4px rgba(0,0,0,.35);
+  transition:transform var(--dur,.4s) var(--ease-soft)}
+.spoiler.opened::after{transform:scaleX(0)}
+
+/* ================= КРУЖКИ ================= */
+.flag-btn{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;
+  border-radius:8px;margin:0 3px;vertical-align:-6px;font-size:14px;line-height:1;
+  color:var(--muted);user-select:none;-webkit-user-select:none}
+.audio-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;
+  width:30px;height:30px;border-radius:50%;margin:0 3px;vertical-align:-8px;
+  background:radial-gradient(circle at 35% 30%,var(--amber2),var(--amber) 72%);
+  color:#221604;font-size:11px;line-height:1;padding-left:2px;touch-action:manipulation;
+  box-shadow:0 0 0 3px rgba(233,180,76,.18),0 2px 6px rgba(0,0,0,.45);
+  cursor:pointer;user-select:none;-webkit-user-select:none;transition:transform .15s var(--ease-pop)}
+.audio-btn:active{transform:scale(.86)}
+.audio-btn .glyph{position:relative;z-index:2;transition:opacity .15s;letter-spacing:-1px}
+.audio-btn .glyph.swap{animation:glyphSwap .28s var(--ease-pop)}
+@keyframes glyphSwap{from{transform:scale(.3);opacity:0}}
+.audio-btn .ring{position:absolute;inset:-5px;z-index:1;transform:rotate(-90deg);pointer-events:none;
+  opacity:0;transition:opacity .3s}
+.audio-btn.playing .ring{opacity:1}
+.audio-btn.playing{background:radial-gradient(circle at 35% 30%,#fff3d6,var(--amber) 76%)}
+.audio-btn.playing::before{content:'';position:absolute;inset:-3px;border-radius:50%;
+  border:3px solid rgba(233,180,76,.55);opacity:0;pointer-events:none;
+  animation:pulseRing 1.2s ease-out infinite}
+@keyframes pulseRing{
+  0%{transform:scale(.85);opacity:.85}
+  100%{transform:scale(1.75);opacity:0}}
+.audio-btn.loop{background:radial-gradient(circle at 35% 30%,#d9f0e1,var(--mint) 72%);color:#1c3324;
+  box-shadow:0 0 0 3px rgba(159,208,172,.22),0 2px 6px rgba(0,0,0,.45)}
+.audio-btn.loop .ring circle{stroke:var(--mint)}
+.audio-btn.loop.playing{background:radial-gradient(circle at 35% 30%,#ecfaf2,var(--mint) 76%)}
+.audio-btn.loop.playing::before{border-color:rgba(159,208,172,.6)}
+.audio-btn.onclick::after{content:'';position:absolute;right:-1px;bottom:-1px;width:9px;height:9px;
+  border-radius:50%;background:var(--teal);box-shadow:0 0 0 2px var(--bg2)}
+
+.stoploop-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;
+  width:30px;height:30px;border-radius:50%;margin:0 3px;vertical-align:-8px;
+  background:radial-gradient(circle at 35% 30%,#d3dade,#97a3ab 72%);
+  color:#232a2e;font-size:11px;line-height:1;touch-action:manipulation;
+  box-shadow:0 0 0 3px rgba(151,163,171,.2),0 2px 6px rgba(0,0,0,.45);
+  cursor:pointer;user-select:none;-webkit-user-select:none;
+  transition:transform .15s var(--ease-pop),background .25s,box-shadow .25s}
+.stoploop-btn:active{transform:scale(.86)}
+.stoploop-btn.armed{background:radial-gradient(circle at 35% 30%,#f4b8a5,var(--danger) 72%);
+  color:#3d130a;box-shadow:0 0 0 3px rgba(224,120,86,.28),0 2px 6px rgba(0,0,0,.45)}
+.stoploop-btn.flash{animation:slFlash .45s var(--ease-pop)}
+@keyframes slFlash{0%{transform:scale(1)}40%{transform:scale(1.28)}100%{transform:scale(1)}}
+
+.image-btn{position:relative;display:inline-flex;width:34px;height:34px;border-radius:50%;
+  margin:0 3px;vertical-align:-10px;background-size:cover;background-position:center;
+  background-color:var(--panel2);touch-action:manipulation;cursor:pointer;
+  user-select:none;-webkit-user-select:none;
+  box-shadow:0 0 0 2px rgba(233,240,236,.28),0 2px 6px rgba(0,0,0,.45);
+  transition:transform .15s var(--ease-pop)}
+.image-btn:active{transform:scale(.86)}
+.image-btn::after{content:'◉';position:absolute;right:-3px;bottom:-3px;width:15px;height:15px;
+  border-radius:50%;background:var(--panel);color:var(--amber2);font-size:8px;
+  display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.5)}
+.pop-in{animation:popIn .5s var(--ease-pop)}
+@keyframes popIn{0%{transform:scale(0) rotate(-120deg)}60%{transform:scale(1.2)}100%{transform:scale(1)}}
+
+/* ================= СТАТУС-БАР ================= */
+.statusbar{margin:0 16px;padding:10px 4px;
+  padding-bottom:12px;
+  padding-bottom:calc(max(12px,var(--sab)) + var(--navpad));
+  display:flex;justify-content:space-between;gap:10px;font-size:11.5px;letter-spacing:.04em;
+  color:var(--muted);animation:rise .55s var(--ease-soft) .24s both;
+  border-top:1px dashed transparent;
+  border-image:repeating-linear-gradient(90deg,var(--line) 0 6px,transparent 6px 12px) 1}
+.statusbar .warn{color:var(--amber)}
+.statusbar .ok{color:var(--teal)}
+.sdot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--amber);
+  margin-right:5px;vertical-align:1px;animation:blink 1.2s ease-in-out infinite}
+
+/* ===== ПАНЕЛЬ ФОРМАТИРОВАНИЯ ===== */
+.bubble{position:fixed;z-index:55;display:flex;gap:3px;align-items:center;padding:6px;border-radius:12px;
+  background:#20303c;border:1px solid var(--line);box-shadow:0 10px 28px rgba(0,0,0,.5);
+  opacity:0;transform:translate(-50%,-8px) scale(.92);pointer-events:none;
+  transition:opacity .18s var(--ease-soft),transform .22s var(--ease-pop)}
+.bubble.show{opacity:1;transform:translate(-50%,0) scale(1);pointer-events:auto}
+.bubble button{width:34px;height:34px;border:0;background:transparent;color:var(--ink);
+  border-radius:8px;font-size:14px;cursor:pointer;transition:background .2s,transform .12s}
+.bubble button:active{background:rgba(233,180,76,.2);transform:scale(.9)}
+.bubble .b-b{font-weight:800}
+.bubble .b-i{font-style:italic;font-family:var(--font-display)}
+.bubble .b-u{text-decoration:underline}
+.bubble .b-sp{font-size:16px;color:var(--muted)}
+.bubble .b-sep{width:1px;height:22px;background:var(--line);margin:0 3px;flex:0 0 1px}
+.bubble .b-c{width:22px;height:22px;flex:0 0 22px;border-radius:50%;padding:0;
+  border:2px solid rgba(255,255,255,.28);cursor:pointer;
+  transition:transform .12s var(--ease-pop),border-color .2s}
+.bubble .b-c:active{transform:scale(.8)}
+.bubble .b-c:hover{border-color:rgba(255,255,255,.6)}
+
+/* ================= КОНТЕКСТНОЕ МЕНЮ ================= */
+.ctx{position:fixed;z-index:57;min-width:190px;padding:5px;border-radius:12px;
+  background:#20303c;border:1px solid var(--line);box-shadow:0 12px 32px rgba(0,0,0,.55);
+  opacity:0;transform:scale(.82);pointer-events:none;
+  transition:opacity .16s,transform .2s var(--ease-pop);transform-origin:bottom center}
+.ctx.show{opacity:1;transform:scale(1);pointer-events:auto}
+.ctx button{display:flex;align-items:center;gap:9px;width:100%;padding:10px 12px;border:0;
+  background:none;color:var(--ink);font-size:13.5px;border-radius:8px;cursor:pointer;text-align:left}
+.ctx button:active{background:rgba(255,255,255,.08);transform:scale(.97)}
+.ctx button.danger{color:var(--danger)}
+.ctx .ico{width:20px;text-align:center;flex:0 0 20px}
+
+/* ================= ЛАЙТБОКС ================= */
+#lightbox{position:fixed;inset:0;z-index:80;background:rgba(4,8,10,.93);
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;transition:opacity .3s}
+#lightbox.show{opacity:1;pointer-events:auto}
+#lbImg{max-width:94vw;max-height:82vh;border-radius:12px;
+  box-shadow:0 24px 70px rgba(0,0,0,.65);
+  transform:scale(.88);transition:transform .38s var(--ease-pop)}
+#lightbox.show #lbImg{transform:scale(1)}
+#lbClose{position:absolute;top:calc(max(env(safe-area-inset-top),20px) + 6px);right:16px;
+  width:38px;height:38px;border-radius:50%;border:1px solid var(--line);
+  background:rgba(28,41,51,.85);color:var(--ink);font-size:15px;cursor:pointer;
+  transition:transform .15s var(--ease-pop)}
+#lbClose:active{transform:scale(.85) rotate(90deg)}
+
+/* ================= РЕЖИМ ЧТЕНИЯ ================= */
+.reader{position:fixed;inset:0;z-index:75;display:flex;flex-direction:column;
+  background:linear-gradient(180deg,var(--bg),#0b1013);
+  padding-left:max(env(safe-area-inset-left),0px);padding-right:max(env(safe-area-inset-right),0px);
+  transform:translateY(102%);transition:transform .42s var(--ease-soft)}
+.reader.open{transform:none}
+.reader-bar{display:flex;align-items:center;gap:10px;
+  padding-top:max(env(safe-area-inset-top),40px);
+  padding-left:14px;padding-right:14px;padding-bottom:10px;
+  background:linear-gradient(180deg,var(--panel),rgba(22,33,42,.4))}
+.reader-title{flex:1;min-width:0}
+.reader-title b{display:block;font-family:var(--font-display);font-size:17px;font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.reader-title small{display:block;color:var(--muted);font-size:10.5px;margin-top:3px;
+  letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.reader-title small .rmode{color:var(--teal)}
+.reader-back,.reader-edit{width:40px;height:40px;flex:0 0 40px;border-radius:10px;
+  border:1px solid var(--line);background:var(--panel2);color:var(--ink);font-size:16px;
+  cursor:pointer;transition:transform .12s,background .2s}
+.reader-back:active,.reader-edit:active{transform:scale(.86)}
+.reader-edit{color:var(--amber)}
+.reader-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:14px 16px 28px;
+  padding-bottom:calc(28px + var(--sab) + var(--navpad));
+  overscroll-behavior-y:contain}
+.reader-page{max-width:620px;margin:0 auto;border:1px solid var(--line);border-radius:12px;
+  padding:18px 16px 28px 52px;font-family:var(--font-display);font-size:17px;line-height:34px;
+  color:var(--ink);word-break:break-word;user-select:text;background-color:var(--bg2);
+  background-image:
+    linear-gradient(90deg,transparent 37px,rgba(224,120,86,.3) 37px,rgba(224,120,86,.3) 38.5px,transparent 38.5px),
+    repeating-linear-gradient(180deg,transparent 0,transparent 33px,var(--rule) 33px,var(--rule) 34px);
+  background-attachment:local,local;animation:pageIn .5s var(--ease-soft)}
+.reader-page .rd-empty{color:var(--muted);font-style:italic}
+
+/* ================= ЧТЕНИЕ ПО СЦЕНАМ ================= */
+.scener{position:fixed;inset:0;z-index:76;display:flex;flex-direction:column;
+  background:radial-gradient(900px 500px at 50% -10%, rgba(233,180,76,.08), transparent 60%),
+             linear-gradient(180deg,#0b1013,#0d1418);
+  padding-left:max(env(safe-area-inset-left),0px);padding-right:max(env(safe-area-inset-right),0px);
+  transform:translateY(102%);transition:transform .42s var(--ease-soft)}
+.scener.open{transform:none}
+.sc-bar{display:flex;align-items:center;gap:10px;
+  padding-top:max(env(safe-area-inset-top),40px);
+  padding-left:14px;padding-right:14px;padding-bottom:8px}
+.sc-bar .eq{height:14px}
+.sc-title{flex:1;min-width:0}
+.sc-title b{display:block;font-family:var(--font-display);font-size:16px;font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-title small{color:var(--muted);font-size:10.5px;letter-spacing:.06em}
+.sc-stage{flex:1;display:flex;align-items:center;justify-content:center;
+  padding:16px;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain}
+.sc-card{max-width:600px;width:100%;background:rgba(22,33,42,.92);border:1px solid var(--line);
+  border-radius:16px;padding:24px 26px;box-shadow:0 18px 50px rgba(0,0,0,.45)}
+.sc-text{font-family:var(--font-display);font-size:19px;line-height:1.65;word-break:break-word}
+.sc-chips{display:flex;gap:12px;justify-content:center;align-items:center;flex-wrap:wrap;margin-top:16px}
+.sc-chips .audio-btn,.sc-chips .image-btn{margin:0}
+.sc-chips .image-btn{width:56px;height:56px}
+.sc-end{color:var(--ink);text-align:center;font-family:var(--font-display);font-size:22px;
+  animation:scIn .5s var(--ease-soft)}
+.sc-end small{display:block;margin-top:10px;color:var(--muted);font-size:12px;font-family:var(--font-ui)}
+.sc-end-mark{font-size:30px;color:var(--amber);margin-bottom:8px}
+.sc-in{animation:scIn .45s var(--ease-soft)}
+@keyframes scIn{from{opacity:0;transform:translateY(16px)}}
+.sc-nav{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:10px 18px;
+  padding-bottom:calc(12px + var(--sab) + var(--navpad))}
+.sc-nav button{width:46px;height:40px;border-radius:12px;border:1px solid var(--line);
+  background:var(--panel2);color:var(--ink);font-size:20px;cursor:pointer;
+  transition:transform .12s,background .2s}
+.sc-nav button:active{transform:scale(.88);background:var(--panel)}
+#scHint{flex:1;text-align:center;color:var(--muted);font-size:10.5px;
+  letter-spacing:.1em;text-transform:uppercase}
+
+/* ================= ШТОРКИ ================= */
+.scrim{position:fixed;inset:0;z-index:60;background:rgba(4,9,11,.55);
+  opacity:0;pointer-events:none;transition:opacity .3s}
+.scrim.open{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:61;max-width:620px;margin:0 auto;
+  background:var(--panel);border:1px solid var(--line);border-bottom:0;border-radius:20px 20px 0 0;
+  padding:8px 16px 20px;
+  padding:8px 16px calc(20px + var(--sab) + var(--navpad));
+  max-height:94dvh;overflow-y:auto;overscroll-behavior:contain;
+  transform:translateY(105%);transition:transform .38s var(--ease-soft);
+  box-shadow:0 -14px 44px rgba(0,0,0,.5)}
+@media (orientation:landscape){.sheet{max-width:560px}}
+.sheet.open{transform:translateY(0)}
+.sheet-grab{width:40px;height:4px;border-radius:99px;background:var(--line);margin:6px auto 12px}
+.sheet-title{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  font-family:var(--font-display);font-size:18px;margin:2px 0 12px}
+.sheet-title span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wl-head-actions{display:flex;gap:6px;align-items:center;flex:0 0 auto;flex-wrap:wrap;justify-content:flex-end}
+.mini-btn{border:1px solid var(--line);background:var(--panel2);color:var(--teal);font-size:11px;
+  border-radius:999px;padding:6px 10px;cursor:pointer;white-space:nowrap;
+  transition:transform .12s,background .2s}
+.mini-btn:active{transform:scale(.92);background:rgba(99,193,172,.12)}
+.sheet-close{width:32px;height:32px;flex:0 0 32px;border-radius:50%;border:1px solid var(--line);
+  background:var(--panel2);color:var(--muted);font-size:14px;cursor:pointer;
+  transition:transform .15s var(--ease-pop)}
+.sheet-close:active{transform:scale(.85) rotate(90deg)}
+.sheet-item{position:relative;overflow:hidden;display:flex;align-items:center;gap:13px;width:100%;
+  padding:13px 12px;margin-bottom:6px;border:0;border-radius:12px;background:transparent;
+  color:var(--ink);font-size:14.5px;text-align:left;cursor:pointer;transition:background .2s,transform .12s}
+.sheet-item:active{background:rgba(255,255,255,.05);transform:scale(.98)}
+.sheet-item .ico{width:38px;height:38px;flex:0 0 38px;display:flex;align-items:center;justify-content:center;
+  border-radius:10px;font-size:16px;background:rgba(233,180,76,.12)}
+.sheet-item.si-teal .ico{background:rgba(99,193,172,.13)}
+.sheet-item.si-danger .ico{background:rgba(224,120,86,.14)}
+.sheet-item .txt b{display:block;font-size:14.5px;font-weight:600}
+.sheet-item .txt small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
+.sheet-item.si-danger b{color:var(--danger)}
+.sheet-confirm p{margin:4px 0 14px;color:var(--muted);font-size:13.5px;line-height:1.55;word-break:break-word}
+.sheet-actions{display:flex;gap:8px}
+.sheet-actions .btn{flex:1;padding:12px}
+.field{width:100%;font:inherit;font-size:16px;color:var(--ink);background:var(--panel2);
+  border:1px solid var(--line);border-radius:10px;padding:12px;outline:none;margin-bottom:12px;
+  transition:border-color .25s,box-shadow .25s}
+.field:focus{border-color:rgba(233,180,76,.55);box-shadow:0 0 0 3px rgba(233,180,76,.12)}
+.field.shake{animation:shake .45s;border-color:var(--danger)}
+.code-area{height:130px;font-family:ui-monospace,monospace;font-size:10px;line-height:1.45;
+  resize:none;color:var(--muted);word-break:break-all}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.stat{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:12px;
+  animation:pop .5s var(--ease-pop) both}
+.stat:nth-child(2){animation-delay:.05s}.stat:nth-child(3){animation-delay:.1s}
+.stat:nth-child(4){animation-delay:.15s}.stat:nth-child(5){animation-delay:.2s}
+.stat:nth-child(6){animation-delay:.25s}
+@keyframes pop{from{opacity:0;transform:scale(.8) translateY(8px)}}
+.stat b{display:block;font-family:var(--font-display);font-size:24px;color:var(--amber2);line-height:1.1}
+.stat span{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+
+/* ================= СПИСКИ ================= */
+.wl-count{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;
+  padding:0 6px;border-radius:999px;background:rgba(233,180,76,.15);color:var(--amber2);
+  font-size:12px;font-family:var(--font-ui);vertical-align:2px;margin-left:4px}
+.wl-list{max-height:48dvh;overflow-y:auto;overscroll-behavior:contain;margin:0 -4px 12px;padding:0 4px}
+.wl-row{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;cursor:pointer;
+  border:1px solid var(--line);background:var(--panel2);margin-bottom:6px;
+  transition:background .2s,border-color .2s,transform .12s;user-select:none}
+.wl-row:active{transform:scale(.98)}
+.wl-row.sel{border-color:rgba(233,180,76,.55);background:rgba(233,180,76,.10)}
+.wl-check{width:22px;height:22px;flex:0 0 22px;border-radius:50%;border:2px solid var(--muted);
+  display:flex;align-items:center;justify-content:center;color:transparent;font-size:12px;font-weight:800;
+  transition:all .22s var(--ease-pop)}
+.wl-row.sel .wl-check{border-color:var(--amber);background:var(--amber);color:#221604;transform:scale(1.08)}
+.wl-txt{flex:1;min-width:0}
+.wl-txt b{display:block;font-size:14.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wl-txt small{display:block;color:var(--muted);font-size:11.5px;margin-top:2px}
+.wl-cur{color:var(--teal);font-size:10px;border:1px solid rgba(99,193,172,.4);border-radius:999px;
+  padding:2px 8px;flex:0 0 auto;letter-spacing:.05em}
+.wl-read{flex:0 0 auto;width:34px;height:34px;border:0;border-radius:9px;background:transparent;
+  font-size:16px;color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:transform .15s var(--ease-pop),background .2s}
+.wl-read:active{transform:scale(.82);background:rgba(233,180,76,.14)}
+.wl-actions{display:flex;gap:8px}
+.wl-actions .btn{flex:1;padding:12px}
+.wl-actions .hint,.loop-empty{flex:1;text-align:center;color:var(--muted);font-size:12.5px;padding:12px 6px;line-height:1.5}
+.loop-hint,.sp-hint{margin:0 2px 12px;color:var(--muted);font-size:12.5px;line-height:1.5}
+
+/* ================= РЕДАКТОР ЗВУКА ================= */
+.ae-loading{padding:28px 0;text-align:center;color:var(--muted);font-size:13px}
+.ae-loading::after{content:'';display:inline-block;width:12px;height:12px;margin-left:8px;
+  border-radius:50%;border:2px solid var(--line);border-top-color:var(--amber);
+  vertical-align:-2px;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.wave-wrap{position:relative;height:92px;background:var(--panel2);border:1px solid var(--line);
+  border-radius:12px;overflow:hidden;margin-bottom:8px}
+#waveCanvas{display:block;width:100%;height:100%}
+.wave-sel{position:absolute;top:0;bottom:0;background:rgba(233,180,76,.16);
+  border-left:1px solid rgba(233,180,76,.75);border-right:1px solid rgba(233,180,76,.75);
+  pointer-events:none}
+.wave-head{position:absolute;top:0;bottom:0;width:2px;background:var(--amber2);z-index:2;
+  box-shadow:0 0 8px rgba(246,208,124,.85);pointer-events:none;transform:translateX(-1px)}
+.wave-head::after{content:'';position:absolute;top:3px;left:-3px;width:8px;height:8px;
+  border-radius:50%;background:var(--amber2)}
+.wave-handle{position:absolute;top:0;bottom:0;width:22px;cursor:ew-resize;
+  touch-action:none;display:flex;align-items:center;justify-content:center;z-index:3}
+.wave-handle::after{content:'';width:4px;height:34px;border-radius:4px;background:var(--amber);
+  box-shadow:0 0 10px rgba(233,180,76,.65);transition:height .15s}
+.wave-handle:active::after{height:52px}
+.ae-times{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);margin:0 2px 6px}
+.ae-times #tLen{color:var(--amber2)}
+.ae-row{display:flex;align-items:center;gap:10px;margin:12px 0 4px}
+.ae-row.last{margin-bottom:16px}
+.ae-label{font-size:12.5px;color:var(--muted);white-space:nowrap;min-width:82px}
+#volRange,#seekRange,#spDurRange{flex:1;accent-color:var(--amber)}
+#volVal{min-width:46px;text-align:right;font-size:13px;color:var(--amber2)}
+#seekVal{min-width:46px;text-align:right;font-size:12px;color:var(--muted)}
+#spDurVal{min-width:46px;text-align:right;font-size:14px;color:var(--amber2)}
+
+/* ================= КОМПАКТНЫЙ РЕЖИМ ================= */
+@media (max-height:560px){
+  body.nav-pad{--navpad:30px}
+  .app-header{padding-top:max(env(safe-area-inset-top),10px);padding-bottom:6px}
+  .overline{margin-bottom:3px;font-size:9px}
+  h1{font-size:21px}
+  .h1-em svg{display:none}
+  .mast-right{display:none}
+  .toolbar{margin:0 10px;padding:7px;gap:6px}
+  .btn{padding:8px 6px;font-size:11.5px}
+  .icon-btn{width:36px;flex-basis:36px;font-size:14px}
+  .kb-round{width:36px;flex-basis:36px;font-size:14px}
+  select{padding:7px 30px 7px 28px;font-size:15px}
+  #scrollArea{padding:8px 10px 6px}
+  .ed-top{margin-bottom:5px}
+  #editor{padding:12px 12px 20px 44px;line-height:30px;background-image:
+    linear-gradient(90deg,transparent 32px,rgba(224,120,86,.3) 32px,rgba(224,120,86,.3) 33.5px,transparent 33.5px),
+    repeating-linear-gradient(180deg,transparent 0,transparent 29px,var(--rule) 29px,var(--rule) 30px)}
+  .scc-text{line-height:26px;padding:10px 12px 12px 40px}
+  .statusbar{padding:4px 2px;margin:0 10px;font-size:10.5px;
+    padding-bottom:6px;padding-bottom:calc(max(6px,var(--sab)) + var(--navpad))}
+  .wl-list{max-height:34dvh}
+  .wave-wrap{height:64px}
+  .reader-bar{padding-top:max(env(safe-area-inset-top),10px);padding-bottom:6px}
+  .reader-back,.reader-edit{width:34px;height:34px;flex-basis:34px;font-size:14px}
+  .reader-scroll{padding:8px 10px 16px;
+    padding-bottom:calc(16px + var(--sab) + var(--navpad))}
+  .reader-page{padding:12px 12px 20px 44px;line-height:30px;background-image:
+    linear-gradient(90deg,transparent 32px,rgba(224,120,86,.3) 32px,rgba(224,120,86,.3) 33.5px,transparent 33.5px),
+    repeating-linear-gradient(180deg,transparent 0,transparent 29px,var(--rule) 29px,var(--rule) 30px)}
+  .sc-bar{padding-top:max(env(safe-area-inset-top),10px);padding-bottom:6px}
+  .sc-text{font-size:16px}
+  .sc-card{padding:16px 18px}
+}
+
+/* ================= ТОСТ ================= */
+#toast{position:fixed;left:50%;
+  bottom:26px;
+  bottom:calc(26px + var(--sab) + var(--navpad));z-index:90;
+  transform:translate(-50%,18px);opacity:0;pointer-events:none;
+  background:#212f3a;border:1px solid var(--line);color:var(--ink);
+  padding:10px 18px;border-radius:999px;font-size:13px;max-width:86vw;text-align:center;
+  box-shadow:0 12px 30px rgba(0,0,0,.5);transition:transform .35s var(--ease-pop),opacity .3s}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <header class="app-header">
+    <div class="masthead">
+      <div>
+        <button class="overline" id="overline" type="button" title="Переименовать историю">тетрадь<b class="chip-count" id="chipCount">1</b></button>
+        <h1>Интерактивный
+          <span class="h1-em"><em>блокнот</em><svg viewBox="0 0 120 8" aria-hidden="true"><path d="M2 5 Q 30 1 60 5 T 118 3"/></svg></span>
+        </h1>
+      </div>
+      <div class="mast-right">
+        <div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+        <span class="chip"><b></b>офлайн</span>
+      </div>
+    </div>
+  </header>
+
+  <section class="toolbar">
+    <div class="row">
+      <div class="select-wrap"><select id="storySelect" aria-label="Список историй"></select></div>
+      <button class="kb-round ripple-host" id="kbToggle" type="button" aria-pressed="true"
+              aria-label="Клавиатура" title="Показать/скрыть системную клавиатуру"><span class="kb-sym">⌨&#xFE0E;</span></button>
+      <button class="icon-btn ripple-host" id="btnWorks" type="button" aria-label="Мои работы" title="Мои работы">☰</button>
+      <button class="icon-btn pencil ripple-host" id="btnRename" type="button" aria-label="Переименовать историю">✎</button>
+      <button class="icon-btn ripple-host" id="btnMenu" type="button" aria-label="Меню истории">⋯</button>
+      <button class="icon-btn share ripple-host" id="btnShare" type="button" style="display:none"
+              aria-label="Поделиться" title="Поделиться историей">⤴</button>
+    </div>
+    <div class="row" id="rowInsert">
+      <button class="btn teal ripple-host" id="btnAudio" type="button">♪ Звук</button>
+      <button class="btn teal ripple-host" id="btnPhoto" type="button">▨ Фото</button>
+      <button class="btn ripple-host" id="btnStopLoop" type="button" title="Кнопка остановки зацикленных звуков">■ Стоп</button>
+    </div>
+    <div class="row">
+      <button class="btn ripple-host" id="btnNew" type="button">＋ Новая</button>
+      <button class="btn primary ripple-host" id="btnSave" type="button">
+        <span class="save-ico">✓</span><span class="save-label">Сохранить</span><span class="ok-ico">✓ Готово</span>
+      </button>
+      <input type="file" id="fileInput" accept=".mp3,audio/mpeg,audio/mp3,audio/*" hidden>
+      <input type="file" id="imgInput" accept="image/*" hidden>
+      <input type="file" id="cvInput" accept=".cvtxt,application/octet-stream,*/*" hidden>
+    </div>
+  </section>
+
+  <main id="scrollArea">
+    <div class="ed-top">
+      <span class="ed-hint" id="edHint">зажмите кружок — меню · ☰ — все работы</span>
+    </div>
+    <div id="editor" contenteditable="true" data-placeholder="Начните историю…"
+         spellcheck="false" autocapitalize="sentences"></div>
+    <div id="sceneEditor" style="display:none"></div>
+  </main>
+
+  <footer class="statusbar">
+    <span id="saveStatus">…</span>
+    <span id="counters">0 знаков · 0 слов · 0 аудио · 0 фото</span>
+  </footer>
+
+</div>
+
+<!-- Панель форматирования -->
+<div class="bubble" id="formatBubble" aria-hidden="true">
+  <button class="b-b" data-cmd="bold" type="button">Ж</button>
+  <button class="b-i" data-cmd="italic" type="button">К</button>
+  <button class="b-u" data-cmd="underline" type="button">Ч</button>
+  <button class="b-sp" data-spoiler="1" type="button" aria-label="Спойлер" title="Скрыть под спойлер">▓</button>
+  <span class="b-sep"></span>
+  <button class="b-c" data-color="#e9efe9" style="background:#e9efe9" type="button" aria-label="Обычный цвет"></button>
+  <button class="b-c" data-color="#e9b44c" style="background:#e9b44c" type="button" aria-label="Янтарный"></button>
+  <button class="b-c" data-color="#63c1ac" style="background:#63c1ac" type="button" aria-label="Бирюзовый"></button>
+  <button class="b-c" data-color="#e07856" style="background:#e07856" type="button" aria-label="Коралловый"></button>
+  <button class="b-c" data-color="#e0a3b8" style="background:#e0a3b8" type="button" aria-label="Розовый"></button>
+</div>
+
+<!-- Контекстное меню -->
+<div class="ctx" id="ctxPopup" aria-hidden="true"></div>
+
+<!-- РЕЖИМ ЧТЕНИЯ -->
+<div class="reader" id="reader" aria-hidden="true">
+  <div class="reader-bar">
+    <button class="reader-back" id="readerBack" type="button" aria-label="Назад">←</button>
+    <div class="reader-title">
+      <b id="readerTitle">История</b>
+      <small id="readerMeta"></small>
+    </div>
+    <button class="reader-edit" id="readerEdit" type="button" aria-label="Редактировать" title="Открыть в редакторе">✎</button>
+  </div>
+  <div class="reader-scroll">
+    <div class="reader-page" id="readerPage"></div>
+  </div>
+</div>
+
+<!-- ЧТЕНИЕ ПО СЦЕНАМ -->
+<div class="scener" id="scener" aria-hidden="true">
+  <div class="sc-bar">
+    <button class="reader-back" id="scBack" type="button" aria-label="Назад">←</button>
+    <div class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="sc-title">
+      <b id="scTitle">История</b>
+      <small id="scMeta"></small>
+    </div>
+  </div>
+  <div class="sc-stage" id="scStage"></div>
+  <div class="sc-nav">
+    <button id="scPrev" type="button" aria-label="Назад по сценам">‹</button>
+    <span id="scHint">нажмите, чтобы продолжить</span>
+    <button id="scNext" type="button" aria-label="Вперёд">›</button>
+  </div>
+</div>
+
+<!-- Лайтбокс фото -->
+<div id="lightbox" aria-hidden="true">
+  <button id="lbClose" type="button" aria-label="Закрыть">✕</button>
+  <img id="lbImg" alt="Фото">
+</div>
+
+<!-- Затемнение и шторки -->
+<div class="scrim" id="scrim"></div>
+
+<!-- Выбор режима новой истории -->
+<div class="sheet" id="newModeSheet" role="dialog" aria-label="Новая история">
+  <div class="sheet-grab"></div>
+  <div class="sheet-title"><span>Новая история</span><button class="sheet-close" data-close type="button">✕</button></div>
+  <button class="sheet-item si-teal ripple-host" id="nmNormal" type="button">
+    <span class="ico">≡</span><span class="txt"><b>Обычный режим</b><small>звуки, фото и стопы прямо в тексте</small></span>
+  </button>
+  <button class="sheet-item ripple-host" id="nmScenes" type="button">
+    <span class="ico">▦</span><span class="txt"><b>По сценам</b><small>история из сцен: полка медиа + текст сцены</small></span>
+  </button>
+</div>
+
+<!-- Список работ -->
+<div class="sheet" id="worksSheet" role="dialog" aria-label="Мои работы">
+  <div class="sheet-grab"></div>
+  <div id="wlMain">
+    <div class="sheet-title">
+      <span>Мои работы<b class="wl-count" id="wlCount">0</b></span>
+      <span class="wl-head-actions">
+        <button class="mini-btn" id="btnImport" type="button" title="Открыть файл .cvtxt">⭳ Файл</button>
+        <button class="mini-btn" id="btnImportCode" type="button" title="Импорт из кода">⭳ Код</button>
+        <button class="mini-btn" id="wlSelectAll" type="button">Выделить все</button>
+        <button class="sheet-close" data-close type="button">✕</button>
+      </span>
+    </div>
+    <div class="wl-list" id="wlList"></div>
+    <div class="wl-actions" id="wlActions"></div>
+  </div>
+  <div id="wlConfirm" hidden>
+    <div class="sheet-title"><span>Удалить работы?</span><button class="sheet-close" id="wlConfClose" type="button">✕</button></div>
+    <div class="sheet-confirm"><p id="wlConfText"></p>
+      <div class="sheet-actions">
+        <button class="btn ripple-host" id="wlConfCancel" type="button">Отмена</button>
+        <button class="btn danger-fill ripple-host" id="wlConfOk" type="button">Удалить</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Меню истории -->
+<div class="sheet" id="menuSheet" role="dialog" aria-label="Меню истории">
+  <div class="sheet-grab"></div>
+  <div class="sheet-view" id="menuMain">
+    <div class="sheet-title"><span id="menuTitle">История</span><button class="sheet-close" data-close type="button">✕</button></div>
+    <button class="sheet-item si-teal ripple-host" id="miReader" type="button"><span class="ico">≡</span><span class="txt"><b>Читать</b><small>просмотр без редактирования</small></span></button>
+    <button class="sheet-item si-teal ripple-host" id="miScener" type="button"><span class="ico">▦</span><span class="txt"><b>Чтение по сценам</b><small>для историй «по сценам»</small></span></button>
+    <button class="sheet-item ripple-host" id="miRename" type="button"><span class="ico">✎</span><span class="txt"><b>Переименовать</b><small>дать истории своё название</small></span></button>
+    <button class="sheet-item si-teal ripple-host" id="miInfo" type="button"><span class="ico">⊙</span><span class="txt"><b>Сведения</b><small>статистика текста и вложений</small></span></button>
+    <button class="sheet-item si-teal ripple-host" id="miRead" type="button"><span class="ico">«</span><span class="txt"><b id="miReadLabel">Прочитать вслух</b><small>озвучка текста голосом устройства</small></span></button>
+    <button class="sheet-item si-danger ripple-host" id="miDelete" type="button"><span class="ico">✕</span><span class="txt"><b>Удалить</b><small>история и вложения будут стёрты</small></span></button>
+  </div>
+  <div class="sheet-view" id="menuConfirm" hidden>
+    <div class="sheet-title"><span>Удалить историю?</span><button class="sheet-close" data-close type="button">✕</button></div>
+    <div class="sheet-confirm"><p id="confirmText"></p>
+      <div class="sheet-actions">
+        <button class="btn ripple-host" id="btnCancelDel" type="button">Отмена</button>
+        <button class="btn danger-fill ripple-host" id="btnConfirmDel" type="button">Удалить</button>
+      </div>
+    </div>
+  </div>
+  <div class="sheet-view" id="menuInfo" hidden>
+    <div class="sheet-title"><span>Сведения</span><button class="sheet-close" data-close type="button">✕</button></div>
+    <div class="stat-grid" id="statGrid"></div>
+    <div class="sheet-actions"><button class="btn primary ripple-host" data-close type="button">Закрыть</button></div>
+  </div>
+</div>
+
+<!-- Переименование -->
+<div class="sheet" id="renameSheet" role="dialog" aria-label="Переименование">
+  <div class="sheet-grab"></div>
+  <div class="sheet-title"><span>Название истории</span><button class="sheet-close" data-close type="button">✕</button></div>
+  <input class="field" id="renameInput" maxlength="80" placeholder="Например: «Сказка про кита»" autocomplete="off">
+  <div class="sheet-actions">
+    <button class="btn ripple-host" data-close type="button">Отмена</button>
+    <button class="btn primary ripple-host" id="btnRenameOk" type="button">Сохранить название</button>
+  </div>
+</div>
+
+<!-- Привязка зацикленных звуков -->
+<div class="sheet" id="loopSheet" role="dialog" aria-label="Привязка зацикленных звуков">
+  <div class="sheet-grab"></div>
+  <div class="sheet-title"><span>Зацикленные звуки</span><button class="sheet-close" data-close type="button">✕</button></div>
+  <p class="loop-hint">Отметьте один или несколько зацикленных звуков ↻, которые будет останавливать эта кнопка ■.</p>
+  <div class="wl-list" id="loopList"></div>
+  <div class="sheet-actions">
+    <button class="btn ripple-host" data-close type="button">Отмена</button>
+    <button class="btn primary ripple-host" id="loopLinkOk" type="button">Привязать</button>
+  </div>
+</div>
+
+<!-- Настройка спойлера -->
+<div class="sheet" id="spoilerSheet" role="dialog" aria-label="Спойлер">
+  <div class="sheet-grab"></div>
+  <div class="sheet-title"><span>Спойлер ▓</span><button class="sheet-close" data-close type="button">✕</button></div>
+  <p class="sp-hint">Выделенный текст будет скрыт под цензурной плашкой. Задайте, за сколько секунд плашка откроется при нажатии.</p>
+  <div class="ae-row last">
+    <span class="ae-label">Время</span>
+    <input type="range" id="spDurRange" min="0.5" max="8" step="0.5" value="2">
+    <b id="spDurVal">2 с</b>
+  </div>
+  <div class="sheet-actions">
+    <button class="btn ripple-host" data-close type="button">Отмена</button>
+    <button class="btn primary ripple-host" id="spApply" type="button">Скрыть текст</button>
+  </div>
+</div>
+
+<!-- Экспорт: обмен кодом -->
+<div class="sheet" id="exportSheet" role="dialog" aria-label="Обмен кодом">
+  <div class="sheet-grab"></div>
+  <div class="sheet-title"><span>Обмен кодом</span><button class="sheet-close" data-close type="button">✕</button></div>
+  <p class="sp-hint" id="exportInfo"></p>
+  <p class="sp-hint">Если система не даёт отправить файл напрямую, история упакована в текстовый код. Скопируйте его, отправьте в любом мессенджере. Получатель нажмёт ☰ → «⭳ Код» и вставит код.</p>
+  <textarea class="field code-area" id="exportCode" readonly spellcheck="false"></textarea>
+  <div class="sheet-actions">
+    <button class="btn primary ripple-host" id="exportCopy" type="button">Копировать код</button>
+    <button class="btn ripple-host" data-close type="button">Готово</button>
+  </div>
+</div>
+
+<!-- Импорт из кода -->
+<div class="sheet" id="importCodeSheet" role="dialog" aria-label="Импорт из кода">
+  <div class="sheet-grab"></div>
+  <div class="sheet-title"><span>Импорт из кода</span><button class="sheet-close" data-close type="button">✕</button></div>
+  <p class="sp-hint">Вставьте полученный код истории (целиком, вместе с BEGIN/END).</p>
+  <textarea class="field code-area" id="importCode" spellcheck="false" style="height:170px"></textarea>
+  <div class="sheet-actions">
+    <button class="btn ripple-host" data-close type="button">Отмена</button>
+    <button class="btn primary ripple-host" id="importCodeOk" type="button">Импортировать</button>
+  </div>
+</div>
+
+<!-- Редактор звука -->
+<div class="sheet" id="audioEditSheet" role="dialog" aria-label="Изменить звук">
+  <div class="sheet-grab"></div>
+  <div class="sheet-title"><span>Изменить звук</span><button class="sheet-close" data-close type="button">✕</button></div>
+  <div id="aeLoading" class="ae-loading">Расшифровка аудио…</div>
+  <div id="aeBody" hidden>
+    <div class="wave-wrap" id="waveWrap">
+      <canvas id="waveCanvas"></canvas>
+      <div class="wave-sel" id="waveSel"></div>
+      <div class="wave-head" id="waveHead"></div>
+      <div class="wave-handle" id="hStart"></div>
+      <div class="wave-handle" id="hEnd"></div>
+    </div>
+    <div class="ae-times"><span id="tStart">0:00.0</span><span id="tLen">выбрано 0:00.0</span><span id="tEnd">0:00.0</span></div>
+    <div class="ae-row">
+      <span class="ae-label">⏱ Позиция</span>
+      <input type="range" id="seekRange" min="0" max="1000" value="0">
+      <b id="seekVal">0:00.0</b>
+    </div>
+    <div class="ae-row last">
+      <span class="ae-label">Громкость</span>
+      <input type="range" id="volRange" min="0" max="200" value="100">
+      <b id="volVal">100%</b>
+    </div>
+    <div class="sheet-actions">
+      <button class="btn teal ripple-host" id="aePreview" type="button">▶ Прослушать</button>
+      <button class="btn primary ripple-host" id="aeApply" type="button">Применить</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" role="status"></div>
+
+<script>
+'use strict';
+/* ==================================================================
+   ИНТЕРАКТИВНЫЙ БЛОКНОТ · PWA-версия для GitHub Pages.
+   Офлайн, чистый JS, IndexedDB. Обмен историями файлами .cvtxt
+   через системное «Поделиться» (в Chrome/PWA).
+================================================================== */
+const $=id=>document.getElementById(id);
+const editor=$('editor'), sceneEditor=$('sceneEditor'),
+      storySelect=$('storySelect'), fileInput=$('fileInput'),
+      imgInput=$('imgInput'), cvInput=$('cvInput'),
+      toastEl=$('toast'), bubble=$('formatBubble'),
+      scrim=$('scrim'), ctxPopup=$('ctxPopup'), lightbox=$('lightbox'),
+      reader=$('reader'), scener=$('scener');
+
+const PLAY_GLYPH='\u25B6\uFE0E';
+const PAUSE_GLYPH='\u2016';
+const ICON={stop:'\u25A0',loop:'\u21BB',unloop:'\u21BA',edit:'\u270E',del:'\u2715',
+            open:'\u25C9',link:'\u221E',works:'\u2630',photo:'\u25A8',note:'\u266A',
+            read:'\u2261',info:'\u2299',speech:'\u00AB',ok:'\u2713',sp:'\u2593'};
+const RING_NS='http://www.w3.org/2000/svg', RING_C=2*Math.PI*17;
+const CHIP_SEL='.audio-btn,.image-btn,.stoploop-btn,.flag-btn';
+const CV_BEGIN='-----CVTXT-BEGIN-----';
+const CV_END='-----CVTXT-END-----';
+const buzz=ms=>{try{navigator.vibrate&&navigator.vibrate(ms)}catch(e){}};
+const haptic=()=>buzz(12);
+const isChip=n=>n&&n.nodeType===1&&(n.classList.contains('audio-btn')||
+  n.classList.contains('image-btn')||n.classList.contains('stoploop-btn')||
+  n.classList.contains('flag-btn'));
+
+/* ---------- Детект нижней панели ---------- */
+function detectNavPad(){
+  try{
+    const probe=document.createElement('div');
+    probe.style.cssText='position:fixed;left:0;bottom:0;width:1px;visibility:hidden;'+
+      'pointer-events:none;height:env(safe-area-inset-bottom,0px);';
+    document.body.appendChild(probe);
+    const inset=probe.getBoundingClientRect().height;
+    probe.remove();
+    const fullscreen=window.innerHeight>=screen.height-4;
+    document.body.classList.toggle('nav-pad',inset<4&&fullscreen);
+  }catch(e){}
+}
+
+/* ---------- IndexedDB ---------- */
+const DB_NAME='interactive-notebook',DB_VER=1,STORE='stories';
+let db=null;
+function openDB(){return new Promise((res,rej)=>{
+  const r=indexedDB.open(DB_NAME,DB_VER);
+  r.onupgradeneeded=e=>{const d=e.target.result;
+    if(!d.objectStoreNames.contains(STORE))d.createObjectStore(STORE,{keyPath:'id'});};
+  r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);});}
+const dbAll=()=>new Promise((res,rej)=>{const q=db.transaction(STORE,'readonly').objectStore(STORE).getAll();q.onsuccess=()=>res(q.result||[]);q.onerror=()=>rej(q.error);});
+const dbGet=id=>new Promise((res,rej)=>{const q=db.transaction(STORE,'readonly').objectStore(STORE).get(id);q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});
+const dbPut=rc=>new Promise((res,rej)=>{const q=db.transaction(STORE,'readwrite').objectStore(STORE).put(rc);q.onsuccess=()=>res();q.onerror=()=>rej(q.error);});
+const dbDel=id=>new Promise((res,rej)=>{const q=db.transaction(STORE,'readwrite').objectStore(STORE).delete(id);q.onsuccess=()=>res();q.onerror=()=>rej(q.error);});
+
+/* ---------- Состояние ---------- */
+let currentId=null, currentMode='normal', dirty=false,
+    lastSavedAt=null, savedRange=null, storyCreatedAt=null;
+const currentAudios=new Map(), currentImages=new Map(), players=new Map();
+const playingSet=new Map();
+let rafRunning=false;
+let readerAudios=new Map(), readerImages=new Map(),
+    readerIsCurrent=false, readerOpenId=null,
+    viewPreparedId=null, viewRec=null;
+let loopLinkTarget=null, pendingSpoilerRange=null, pendingShelf=null;
+let rScenes=[], scIdx=-1, scenerOpen=false, importing=false;
+const getAudioRec=id=>currentAudios.get(id)||readerAudios.get(id);
+const getImageRec=id=>currentImages.get(id)||readerImages.get(id);
+
+const newId=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const timeStr=t=>new Date(t).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+const dateStr=t=>new Date(t).toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'numeric'});
+const fmt=t=>{const m=Math.floor(t/60),s=t-m*60;return m+':'+(s<10?'0':'')+s.toFixed(1);};
+const byDate=(a,b)=>(b.updatedAt||0)-(a.updatedAt||0);
+function makeTitle(){const d=new Date();
+  return 'История от '+d.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit'})+' '+timeStr(d.getTime());}
+
+/* ---------- Тост ---------- */
+let toastTimer;
+function toast(msg){toastEl.textContent=msg;toastEl.classList.add('show');
+  clearTimeout(toastTimer);toastTimer=setTimeout(()=>toastEl.classList.remove('show'),2600);}
+
+/* ---------- Рябь ---------- */
+document.addEventListener('pointerdown',e=>{
+  const host=e.target.closest('.ripple-host');
+  if(!host)return;
+  const rect=host.getBoundingClientRect(),d=Math.max(rect.width,rect.height)*2.1;
+  const s=document.createElement('span');s.className='ripple';
+  s.style.width=s.style.height=d+'px';
+  s.style.left=(e.clientX-rect.left)+'px';s.style.top=(e.clientY-rect.top)+'px';
+  host.appendChild(s);
+  s.addEventListener('animationend',()=>s.remove());
+  haptic();
+},{passive:true});
+function mkBtn(box,label,cls,fn){
+  const b=document.createElement('button');b.type='button';
+  b.className='btn ripple-host'+(cls?' '+cls:'');
+  b.innerHTML=label;b.onclick=fn;box.appendChild(b);return b;
+}
+
+/* ---------- Поворот ---------- */
+let rsTimer;
+function onReflow(){
+  clearTimeout(rsTimer);
+  rsTimer=setTimeout(()=>{
+    detectNavPad();
+    closeCtx();
+    updateBubble();
+    if($('audioEditSheet').classList.contains('open')&&!$('aeBody').hidden&&editState.buffer){
+      drawWave();updateTrimUI();setSeek(seekPos);
+    }
+  },130);
+}
+window.addEventListener('resize',onReflow);
+window.addEventListener('orientationchange',onReflow);
+
+/* ---------- Курсор ---------- */
+function inEditable(node){return editor.contains(node)||sceneEditor.contains(node);}
+function storeSelection(){
+  const sel=window.getSelection();
+  if(!sel||sel.rangeCount===0)return;
+  const r=sel.getRangeAt(0);
+  if(inEditable(r.startContainer))savedRange=r.cloneRange();
+}
+document.addEventListener('selectionchange',()=>{storeSelection();updateBubble();});
+editor.addEventListener('blur',storeSelection);
+
+/* ---------- Клавиатура ---------- */
+let kbEnabled=localStorage.getItem('kb-enabled')!=='0';
+function applyKb(){
+  if(kbEnabled)editor.removeAttribute('inputmode');
+  else editor.setAttribute('inputmode','none');
+  sceneEditor.querySelectorAll('.scc-text').forEach(t=>{
+    if(kbEnabled)t.removeAttribute('inputmode');else t.setAttribute('inputmode','none');
+  });
+  $('kbToggle').classList.toggle('kb-off',!kbEnabled);
+  $('kbToggle').setAttribute('aria-pressed',kbEnabled);
+}
+$('kbToggle').onclick=()=>{
+  kbEnabled=!kbEnabled;
+  localStorage.setItem('kb-enabled',kbEnabled?'1':'0');
+  applyKb();
+  if(!kbEnabled&&document.activeElement===editor)editor.blur();
+  haptic();
+  toast(kbEnabled?'Клавиатура включена':'Клавиатура скрыта — можно выделять текст');
+};
+
+/* ---------- Кружки: фабрики ---------- */
+function createRing(){
+  const svg=document.createElementNS(RING_NS,'svg');
+  svg.setAttribute('viewBox','0 0 40 40');svg.classList.add('ring');
+  const c=document.createElementNS(RING_NS,'circle');
+  c.setAttribute('cx','20');c.setAttribute('cy','20');c.setAttribute('r','17');
+  c.setAttribute('fill','none');c.setAttribute('stroke','#f6d07c');
+  c.setAttribute('stroke-width','2.6');c.setAttribute('stroke-linecap','round');
+  c.setAttribute('stroke-dasharray',RING_C.toFixed(1));
+  c.setAttribute('stroke-dashoffset',RING_C.toFixed(1));
+  svg.appendChild(c);return svg;
+}
+function makeAudioChip(id,opts){
+  opts=opts||{};
+  const btn=document.createElement('span');
+  btn.className='audio-btn'+(opts.loop?' loop':'')+(opts.onClick?' onclick':'');
+  btn.contentEditable='false';
+  btn.dataset.audioId=id;
+  if(opts.onClick)btn.dataset.onclick='1';
+  btn.setAttribute('role','button');btn.setAttribute('aria-label','Аудио');
+  const g=document.createElement('span');g.className='glyph';g.textContent=PLAY_GLYPH;
+  btn.appendChild(g);btn.appendChild(createRing());
+  return btn;
+}
+function makeImageChip(id,url){
+  const btn=document.createElement('span');
+  btn.className='image-btn';btn.contentEditable='false';
+  btn.dataset.imgId=id;btn.setAttribute('role','button');
+  btn.setAttribute('aria-label','Открыть фото');
+  btn.style.backgroundImage='url("'+url+'")';
+  return btn;
+}
+function makeStopChip(id,loops){
+  const btn=document.createElement('span');
+  btn.className='stoploop-btn'+((loops&&loops.length)?' armed':'');
+  btn.contentEditable='false';
+  btn.dataset.slId=id;btn.dataset.loops=(loops||[]).join(',');
+  btn.setAttribute('role','button');btn.setAttribute('aria-label','Остановить зацикленные звуки');
+  btn.textContent=ICON.stop;
+  return btn;
+}
+
+/* ---------- Вставка кружков в курсор (обычный режим) ---------- */
+function insertChip(buildNode){
+  editor.focus();
+  const sel=window.getSelection();
+  let range=null;
+  if(savedRange&&editor.contains(savedRange.startContainer))range=savedRange;
+  else{range=document.createRange();range.selectNodeContents(editor);range.collapse(false);}
+  sel.removeAllRanges();sel.addRange(range);
+  const node=buildNode();
+  const tail=document.createTextNode('\u00A0');
+  range.insertNode(tail);range.insertNode(node);
+  const caret=document.createRange();caret.setStart(tail,1);caret.collapse(true);
+  sel.removeAllRanges();sel.addRange(caret);
+  savedRange=caret.cloneRange();
+  markDirty();scheduleCounters();
+  return node;
+}
+function insertAudioButton(blob){
+  const id=newId('a');
+  insertChip(()=>{
+    const btn=makeAudioChip(id,{});
+    btn.classList.add('pop-in');
+    btn.addEventListener('animationend',()=>btn.classList.remove('pop-in'),{once:true});
+    return btn;
+  });
+  currentAudios.set(id,{blob,url:URL.createObjectURL(blob)});
+}
+function insertImageButton(blob){
+  const id=newId('i');
+  const url=URL.createObjectURL(blob);
+  insertChip(()=>{
+    const btn=makeImageChip(id,url);
+    btn.classList.add('pop-in');
+    btn.addEventListener('animationend',()=>btn.classList.remove('pop-in'),{once:true});
+    return btn;
+  });
+  currentImages.set(id,{blob,url});
+}
+function insertStopLoopChip(){
+  const id=newId('s');
+  insertChip(()=>{
+    const btn=makeStopChip(id,[]);
+    btn.classList.add('pop-in');
+    btn.addEventListener('animationend',()=>btn.classList.remove('pop-in'),{once:true});
+    return btn;
+  });
+}
+
+/* ---------- СПОЙЛЕР ---------- */
+function toggleSpoiler(el){
+  const opened=el.classList.contains('opened');
+  if(opened){
+    el.style.setProperty('--dur','.35s');
+    el.classList.remove('opened');
+  }else{
+    const d=parseFloat(el.dataset.dur)||1;
+    el.style.setProperty('--dur',d+'s');
+    el.classList.add('opened');
+  }
+  haptic();
+}
+function applySpoiler(range,dur){
+  const span=document.createElement('span');
+  span.className='spoiler';span.dataset.dur=dur;
+  try{
+    span.appendChild(range.extractContents());
+    range.insertNode(span);
+    const caret=document.createRange();
+    caret.setStartAfter(span);caret.collapse(true);
+    const sel=window.getSelection();
+    sel.removeAllRanges();sel.addRange(caret);
+    savedRange=caret.cloneRange();
+  }catch(e){toast('Не удалось обернуть выделение');}
+  markDirty();scheduleCounters();
+}
+$('spDurRange').addEventListener('input',()=>{
+  $('spDurVal').textContent=$('spDurRange').value+' с';
+});
+$('spApply').onclick=()=>{
+  const dur=parseFloat($('spDurRange').value)||2;
+  closeAllSheets();
+  if(!pendingSpoilerRange)return;
+  const range=pendingSpoilerRange;pendingSpoilerRange=null;
+  editor.focus();
+  const sel=window.getSelection();
+  sel.removeAllRanges();sel.addRange(range);
+  applySpoiler(range,dur);
+  toast(ICON.sp+' Спойлер добавлен — нажмите на плашку, чтобы открыть');
+};
+
+/* ---------- Плеер ---------- */
+function setGlyph(btn,txt){
+  const g=btn.querySelector('.glyph')||btn;
+  g.textContent=txt;g.classList.remove('swap');void g.offsetWidth;g.classList.add('swap');
+}
+function resetRing(btn){
+  const c=btn&&btn.querySelector('.ring circle');
+  if(c)c.setAttribute('stroke-dashoffset',RING_C.toFixed(1));
+}
+function syncPlayingClass(){document.body.classList.toggle('playing',playingSet.size>0);}
+function ringTick(){
+  if(playingSet.size===0){rafRunning=false;return;}
+  for(const [id,btn] of playingSet){
+    const a=players.get(id);
+    if(a&&a.duration&&btn){
+      const c=btn.querySelector('.ring circle');
+      if(c)c.setAttribute('stroke-dashoffset',
+        (RING_C*(1-Math.min(a.currentTime/a.duration,1))).toFixed(1));
+    }
+  }
+  requestAnimationFrame(ringTick);
+}
+function ensureRaf(){if(!rafRunning&&playingSet.size){rafRunning=true;requestAnimationFrame(ringTick);}}
+function getPlayer(id){
+  let a=players.get(id);
+  if(!a){const rec=getAudioRec(id);if(!rec)return null;
+    a=new Audio(rec.url);a.preload='auto';a.loop=false;
+    const fin=()=>{const b=playingSet.get(id);
+      if(b){setGlyph(b,PLAY_GLYPH);b.classList.remove('playing');resetRing(b);}
+      playingSet.delete(id);syncPlayingClass();};
+    a.addEventListener('ended',fin);a.addEventListener('error',fin);
+    players.set(id,a);}
+  return a;
+}
+
+/* --- Плавное затухание --- */
+const FADE_MS=2000;
+function cancelFade(a){
+  if(a._fadeIv){clearInterval(a._fadeIv);a._fadeIv=null;}
+  if(a._fadeTo){clearTimeout(a._fadeTo);a._fadeTo=null;}
+  try{a.volume=1;}catch(e){}
+}
+function fadeOutPause(a){
+  cancelFade(a);
+  const v0=(typeof a.volume==='number'&&a.volume>0)?a.volume:1;
+  const t0=Date.now();
+  const hardStop=()=>{
+    if(a._fadeIv){clearInterval(a._fadeIv);a._fadeIv=null;}
+    a._fadeTo=null;
+    try{a.pause();}catch(e){}
+    try{a.currentTime=0;}catch(e){}
+    try{a.volume=1;}catch(e){}
+  };
+  a._fadeTo=setTimeout(hardStop,FADE_MS+150);
+  a._fadeIv=setInterval(()=>{
+    const k=Math.min(1,(Date.now()-t0)/FADE_MS);
+    const vol=v0*(1-k)*(1-k);
+    try{a.volume=Math.max(0,vol);}catch(e){}
+    if(k>=1){
+      if(a._fadeTo){clearTimeout(a._fadeTo);a._fadeTo=null;}
+      hardStop();
+    }
+  },30);
+}
+function stopOne(id){
+  const btn=playingSet.get(id),a=players.get(id);
+  if(btn){setGlyph(btn,PLAY_GLYPH);btn.classList.remove('playing');resetRing(btn);}
+  playingSet.delete(id);syncPlayingClass();
+  if(!a)return;
+  fadeOutPause(a);
+}
+function stopAll(){for(const id of [...playingSet.keys()])stopOne(id);}
+function togglePlay(btn){
+  const id=btn.dataset.audioId;
+  if(playingSet.has(id)){stopOne(id);haptic();return;}
+  const a=getPlayer(id);
+  if(!a){toast('Аудиофайл потерян');return;}
+  cancelFade(a);
+  a.loop=btn.classList.contains('loop');
+  try{a.currentTime=0}catch(e){}
+  const p=a.play();if(p&&p.catch)p.catch(()=>toast('Не удалось воспроизвести'));
+  setGlyph(btn,PAUSE_GLYPH);btn.classList.add('playing');
+  playingSet.set(id,btn);
+  syncPlayingClass();ensureRaf();
+  buzz([12,40,12]);
+}
+
+/* ---------- Зацикливание ---------- */
+function toggleLoop(el){
+  el.classList.toggle('loop');
+  const looped=el.classList.contains('loop');
+  const a=players.get(el.dataset.audioId);
+  if(a)a.loop=looped;
+  markDirty();haptic();
+  toast(looped?(ICON.loop+' Звук зациклен — играет по кругу'):'Зацикливание снято');
+}
+
+/* ---------- Стоп-кнопка ---------- */
+function openLoopLink(btn){
+  loopLinkTarget=btn;
+  const rootEl=currentMode==='scenes'?sceneEditor:editor;
+  const loops=[...rootEl.querySelectorAll('.audio-btn.loop')];
+  const bound=(btn.dataset.loops||'').split(',').filter(Boolean);
+  const list=$('loopList');list.innerHTML='';
+  if(!loops.length){
+    list.innerHTML='<div class="wl-actions"><span class="loop-empty">'+
+      'Пока нет зацикленных звуков.<br>Зажмите кружок звука и выберите «Зациклить» '+ICON.loop+'.</span></div>';
+  }
+  loops.forEach((a,i)=>{
+    const id=a.dataset.audioId;
+    const row=document.createElement('div');
+    row.className='wl-row'+(bound.includes(id)?' sel':'');
+    row.dataset.id=id;
+    row.innerHTML='<span class="wl-check">✓</span>'+
+      '<span class="wl-txt"><b>Звук '+(i+1)+'</b><small>зациклен · играет по кругу</small></span>';
+    row.onclick=()=>{row.classList.toggle('sel');haptic();};
+    list.appendChild(row);
+  });
+  openSheetEl($('loopSheet'));
+}
+$('loopLinkOk').onclick=()=>{
+  if(!loopLinkTarget){closeAllSheets();return;}
+  const ids=[...$('loopList').querySelectorAll('.wl-row.sel')].map(r=>r.dataset.id);
+  loopLinkTarget.dataset.loops=ids.join(',');
+  loopLinkTarget.classList.toggle('armed',ids.length>0);
+  markDirty();
+  closeAllSheets();haptic();
+  toast(ids.length?(ICON.link+' Привязано звуков: '+ids.length):'Привязки сняты — кнопка снова серая');
+  loopLinkTarget=null;
+};
+function stopBoundLoops(btn){
+  const ids=(btn.dataset.loops||'').split(',').filter(Boolean);
+  let stopped=0;
+  ids.forEach(id=>{if(playingSet.has(id)){stopOne(id);stopped++;}});
+  if(stopped){
+    btn.classList.remove('flash');void btn.offsetWidth;btn.classList.add('flash');
+    buzz([15,50,15]);
+    toast(ICON.stop+' Остановлено звуков: '+stopped);
+  }else toast('Привязанные звуки сейчас не играют');
+}
+
+/* ---------- Зажатие кружков → меню ---------- */
+let lpTimer=0, lpStart=null, lastLongPress=0, ctxTarget=null;
+const LONG_MS=450, MOVE_TOL=12;
+
+function bindChipInteractions(root){
+  root.addEventListener('pointerdown',e=>{
+    const chip=e.target.closest(CHIP_SEL);
+    if(!chip)return;
+    e.preventDefault();
+    lpStart={x:e.clientX,y:e.clientY};
+    clearTimeout(lpTimer);
+    lpTimer=setTimeout(()=>{lpTimer=0;lastLongPress=Date.now();buzz(25);openCtx(chip);},LONG_MS);
+  });
+  root.addEventListener('pointermove',e=>{
+    if(lpTimer&&lpStart&&Math.hypot(e.clientX-lpStart.x,e.clientY-lpStart.y)>MOVE_TOL){
+      clearTimeout(lpTimer);lpTimer=0;}
+  });
+  ['pointerup','pointercancel','pointerleave'].forEach(ev=>
+    root.addEventListener(ev,()=>{clearTimeout(lpTimer);lpTimer=0;}));
+  root.addEventListener('contextmenu',e=>{
+    const chip=e.target.closest(CHIP_SEL);
+    if(chip){e.preventDefault();if(!ctxTarget)openCtx(chip);}
+  });
+  root.addEventListener('click',e=>{
+    if(Date.now()-lastLongPress<600)return;
+    const a=e.target.closest('.audio-btn');
+    if(a){e.preventDefault();togglePlay(a);return;}
+    const im=e.target.closest('.image-btn');
+    if(im){e.preventDefault();openLightbox(im.dataset.imgId);return;}
+    const sl=e.target.closest('.stoploop-btn');
+    if(sl){e.preventDefault();
+      if(sl.classList.contains('armed'))stopBoundLoops(sl);
+      else toast('Зажмите кружок '+ICON.stop+', чтобы привязать зацикленные звуки');
+      return;
+    }
+    const sp=e.target.closest('.spoiler');
+    if(sp){e.preventDefault();toggleSpoiler(sp);}
+  });
+}
+bindChipInteractions(editor);
+bindChipInteractions(sceneEditor);
+
+function ctxAdd(ico,label,fn,danger){
+  const b=document.createElement('button');b.type='button';
+  if(danger)b.classList.add('danger');
+  const i=document.createElement('span');i.className='ico';i.textContent=ico;
+  b.appendChild(i);b.appendChild(document.createTextNode(label));
+  b.onclick=()=>{closeCtx();fn();};
+  ctxPopup.appendChild(b);
+}
+function openCtx(el){
+  ctxTarget=el;ctxPopup.innerHTML='';
+  if(el.classList.contains('audio-btn')){
+    const id=el.dataset.audioId, playing=playingSet.has(id);
+    const looped=el.classList.contains('loop');
+    ctxAdd(playing?PAUSE_GLYPH:PLAY_GLYPH, playing?'Остановить':'Воспроизвести', ()=>togglePlay(el));
+    ctxAdd(looped?ICON.unloop:ICON.loop, looped?'Снять зацикливание':'Зациклить', ()=>toggleLoop(el));
+    if(currentMode==='scenes'){
+      const byClick=el.dataset.onclick==='1';
+      ctxAdd(byClick?'✓':'○','Проигрывать по клику',()=>{
+        el.dataset.onclick=byClick?'':'1';
+        el.classList.toggle('onclick',!byClick);
+        markDirty();haptic();
+        toast(!byClick?'Будет ждать клика читателя':'Играет вместе со сценой');
+      });
+    }
+    ctxAdd(ICON.edit,'Изменить', ()=>openAudioEditor(id));
+    ctxAdd(ICON.del,'Удалить звук', ()=>removeChip(el), true);
+  }else if(el.classList.contains('stoploop-btn')){
+    ctxAdd(ICON.link,'Connect loop', ()=>openLoopLink(el));
+    if(el.classList.contains('armed'))
+      ctxAdd(ICON.stop,'Остановить привязанные', ()=>stopBoundLoops(el));
+    ctxAdd(ICON.del,'Удалить кнопку', ()=>{
+      el.remove();markDirty();scheduleCounters();haptic();
+      toast(ICON.del+' Кнопка остановки удалена');
+    }, true);
+  }else if(el.classList.contains('flag-btn')){
+    ctxAdd(ICON.del,'Удалить флаг', ()=>{
+      el.remove();markDirty();scheduleCounters();haptic();
+      toast(ICON.del+' Флаг удалён');
+    }, true);
+  }else{
+    ctxAdd(ICON.open,'Открыть фото', ()=>openLightbox(el.dataset.imgId));
+    ctxAdd(ICON.del,'Удалить фото', ()=>removeChip(el), true);
+  }
+  ctxPopup.classList.add('show');
+  const rect=el.getBoundingClientRect();
+  const w=ctxPopup.offsetWidth,h=ctxPopup.offsetHeight;
+  const x=Math.max(8,Math.min(rect.left+rect.width/2-w/2,window.innerWidth-w-8));
+  let y=rect.top-h-10,origin='bottom center';
+  if(y<60){y=rect.bottom+10;origin='top center';}
+  ctxPopup.style.left=x+'px';ctxPopup.style.top=y+'px';ctxPopup.style.transformOrigin=origin;
+}
+function closeCtx(){ctxTarget=null;ctxPopup.classList.remove('show');}
+document.addEventListener('pointerdown',e=>{
+  if(ctxTarget&&!ctxPopup.contains(e.target))closeCtx();
+},true);
+window.addEventListener('scroll',closeCtx,true);
+function removeChip(el){
+  if(el.classList.contains('audio-btn')){
+    const id=el.dataset.audioId;
+    if(playingSet.has(id))stopOne(id);
+  }
+  const wasAudio=el.classList.contains('audio-btn');
+  el.remove();markDirty();scheduleCounters();haptic();
+  toast(ICON.del+(wasAudio?' Звук удалён':' Фото удалено'));
+}
+
+/* ---------- Лайтбокс ---------- */
+function openLightbox(id){
+  const rec=getImageRec(id);
+  if(!rec){toast('Фото потеряно');return;}
+  $('lbImg').src=rec.url;
+  lightbox.classList.add('show');haptic();
+}
+lightbox.addEventListener('click',()=>{lightbox.classList.remove('show');});
+
+/* ---------- РЕДАКТОР СЦЕН ---------- */
+function buildSceneCards(list){
+  sceneEditor.innerHTML='';
+  list.forEach(s=>addSceneCard(s.text||'',s.items||[]));
+  sceneEditor.appendChild(makeAddSceneBtn());
+  renumberCards();
+}
+function makeAddSceneBtn(){
+  const b=document.createElement('button');
+  b.type='button';b.className='add-scene';
+  b.textContent='＋ Добавить сцену';
+  b.onclick=()=>{
+    addSceneCard('',[]);renumberCards();
+    markDirty();scheduleCounters();
+    b.scrollIntoView({block:'end'});
+  };
+  return b;
+}
+function addSceneCard(html,items){
+  const card=document.createElement('div');card.className='scc';
+  const bar=document.createElement('div');bar.className='scc-bar';
+  bar.innerHTML='<span class="scc-num"></span>'+
+    '<span class="scc-tools">'+
+    '<button type="button" data-tool="up" aria-label="Выше">↑</button>'+
+    '<button type="button" data-tool="down" aria-label="Ниже">↓</button>'+
+    '<button type="button" data-tool="del" class="t-del" aria-label="Удалить сцену">✕</button></span>';
+  const shelf=document.createElement('div');shelf.className='scc-shelf';
+  (items||[]).forEach(it=>{
+    let chip=null;
+    if(it.type==='audio')chip=makeAudioChip(it.id,{loop:it.loop,onClick:it.onClick});
+    else if(it.type==='image'){
+      const rec=currentImages.get(it.id);
+      if(rec)chip=makeImageChip(it.id,rec.url);
+    }else if(it.type==='stop')chip=makeStopChip(it.id,it.loops||[]);
+    if(chip)shelf.appendChild(chip);
+  });
+  const add=document.createElement('span');add.className='scc-add';
+  add.innerHTML='<button type="button" data-add="audio" title="Добавить звук">♪</button>'+
+    '<button type="button" data-add="image" title="Добавить фото">▨</button>'+
+    '<button type="button" data-add="stop" title="Добавить стоп">■</button>';
+  shelf.appendChild(add);
+  const txt=document.createElement('div');
+  txt.className='scc-text';txt.contentEditable='true';
+  txt.dataset.placeholder='Текст сцены…';
+  txt.setAttribute('spellcheck','false');
+  if(!kbEnabled)txt.setAttribute('inputmode','none');
+  txt.innerHTML=html;
+  card.appendChild(bar);card.appendChild(shelf);card.appendChild(txt);
+  const addBtn=sceneEditor.querySelector('.add-scene');
+  if(addBtn)sceneEditor.insertBefore(card,addBtn);else sceneEditor.appendChild(card);
+  return card;
+}
+function renumberCards(){
+  sceneEditor.querySelectorAll('.scc').forEach((c,i)=>{
+    c.querySelector('.scc-num').textContent='Сцена '+(i+1);
+  });
+}
+function handleShelfAdd(type,shelf){
+  if(!shelf)return;
+  if(type==='audio'){pendingShelf=shelf;fileInput.click();}
+  else if(type==='image'){pendingShelf=shelf;imgInput.click();}
+  else{
+    const id=newId('s');
+    const chip=makeStopChip(id,[]);
+    chip.classList.add('pop-in');
+    chip.addEventListener('animationend',()=>chip.classList.remove('pop-in'),{once:true});
+    shelf.insertBefore(chip,shelf.querySelector('.scc-add'));
+    markDirty();scheduleCounters();haptic();
+    toast(ICON.stop+' Стоп добавлен — зажмите его, чтобы привязать звуки');
+  }
+}
+function handleCardTool(tool,card){
+  if(!card)return;
+  if(tool==='del'){
+    card.querySelectorAll('.audio-btn').forEach(b=>{
+      const id=b.dataset.audioId;
+      if(playingSet.has(id))stopOne(id);
+    });
+    card.remove();renumberCards();
+    markDirty();scheduleCounters();haptic();
+    toast(ICON.del+' Сцена удалена');
+    return;
+  }
+  if(tool==='up'){
+    const prev=card.previousElementSibling;
+    if(prev&&prev.classList.contains('scc')){
+      sceneEditor.insertBefore(card,prev);renumberCards();markDirty();haptic();
+    }
+  }
+  if(tool==='down'){
+    const next=card.nextElementSibling;
+    if(next&&next.classList.contains('scc')){
+      sceneEditor.insertBefore(next,card);renumberCards();markDirty();haptic();
+    }
+  }
+}
+sceneEditor.addEventListener('click',e=>{
+  const add=e.target.closest('[data-add]');
+  if(add){handleShelfAdd(add.dataset.add,add.closest('.scc-shelf'));return;}
+  const tool=e.target.closest('[data-tool]');
+  if(tool){handleCardTool(tool.dataset.tool,tool.closest('.scc'));return;}
+});
+sceneEditor.addEventListener('input',e=>{
+  if(e.target.classList&&e.target.classList.contains('scc-text')){
+    markDirty();scheduleCounters();
+  }
+});
+function collectScenes(){
+  const out=[];
+  sceneEditor.querySelectorAll('.scc').forEach(card=>{
+    const items=[];
+    card.querySelectorAll('.scc-shelf .audio-btn').forEach(b=>
+      items.push({type:'audio',id:b.dataset.audioId,
+        loop:b.classList.contains('loop'),onClick:b.dataset.onclick==='1'}));
+    card.querySelectorAll('.scc-shelf .image-btn').forEach(b=>
+      items.push({type:'image',id:b.dataset.imgId}));
+    card.querySelectorAll('.scc-shelf .stoploop-btn').forEach(b=>
+      items.push({type:'stop',id:b.dataset.slId,
+        loops:(b.dataset.loops||'').split(',').filter(Boolean)}));
+    const t=card.querySelector('.scc-text');
+    out.push({text:t?t.innerHTML:'',items});
+  });
+  return out;
+}
+
+/* ---------- ФОРМАТ .cvtxt: сборка / разбор / обмен ---------- */
+function sanitizeFileName(s){
+  return ((s||'').replace(/[\\/:*?"<>|]+/g,'').trim().slice(0,60))||'istoriya';
+}
+function bufToBase64(u8){
+  let bin='';const ch=0x8000;
+  for(let i=0;i<u8.length;i+=ch)
+    bin+=String.fromCharCode.apply(null,u8.subarray(i,i+ch));
+  return btoa(bin);
+}
+function base64ToBuf(b64){
+  const bin=atob(b64);
+  const u8=new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);
+  return u8;
+}
+async function buildCvBlob(){
+  const scenesData=collectScenes();
+  const usedA=new Set(),usedI=new Set();
+  scenesData.forEach(s=>s.items.forEach(it=>{
+    if(it.type==='audio')usedA.add(it.id);
+    else if(it.type==='image')usedI.add(it.id);
+    else if(it.type==='stop')(it.loops||[]).forEach(x=>usedA.add(x));
+  }));
+  const media=[];const chunks=[];
+  for(const id of usedA){
+    const rec=currentAudios.get(id);if(!rec)continue;
+    media.push({id,type:'audio',mime:rec.blob.type||'audio/mpeg',size:rec.blob.size});
+    chunks.push(rec.blob);
+  }
+  for(const id of usedI){
+    const rec=currentImages.get(id);if(!rec)continue;
+    media.push({id,type:'image',mime:rec.blob.type||'image/jpeg',size:rec.blob.size});
+    chunks.push(rec.blob);
+  }
+  const manifest={v:1,app:'interactive-notebook',title:currentTitle(),
+    mode:'scenes',createdAt:Date.now(),scenes:scenesData,media};
+  const manBytes=new TextEncoder().encode(JSON.stringify(manifest));
+  const lenBuf=new Uint8Array(4);
+  new DataView(lenBuf.buffer).setUint32(0,manBytes.length,0);
+  const body=new Blob([lenBuf,manBytes,...chunks]);
+  const magic=new TextEncoder().encode('CVTXT1');
+  let flag=0,payload=body;
+  if('CompressionStream' in window){
+    try{
+      const cs=body.stream().pipeThrough(new CompressionStream('gzip'));
+      payload=await new Response(cs).blob();
+      flag=1;
+    }catch(e){flag=0;payload=body;}
+  }
+  return new Blob([magic,new Uint8Array([flag]),payload],
+    {type:'application/octet-stream'});
+}
+function parseCvBuffer(buf){
+  if(buf.length<11)throw new Error('too small');
+  let magic='';
+  for(let i=0;i<6;i++)magic+=String.fromCharCode(buf[i]);
+  if(magic!=='CVTXT1')throw new Error('bad magic');
+  const flag=buf[6];
+  let payload=buf.subarray(7);
+  if(flag===1){
+    if(!('DecompressionStream' in window))throw new Error('no decompression');
+    return new Blob([payload]).stream()
+      .pipeThrough(new DecompressionStream('gzip'))
+      .arrayBuffer().then(ab=>parseManifest(new Uint8Array(ab)));
+  }
+  return Promise.resolve(parseManifest(payload));
+}
+function parseManifest(payload){
+  if(payload.length<4)throw new Error('bad payload');
+  const dv=new DataView(payload.buffer,payload.byteOffset,payload.byteLength);
+  const mLen=dv.getUint32(0,0);
+  if(4+mLen>payload.length)throw new Error('bad manifest length');
+  const manifest=JSON.parse(new TextDecoder().decode(payload.subarray(4,4+mLen)));
+  if(!manifest||manifest.v!==1||!Array.isArray(manifest.scenes))throw new Error('bad manifest');
+  let off=4+mLen;
+  const blobs={};
+  for(const m of manifest.media||[]){
+    if(off+m.size>payload.length)throw new Error('bad media');
+    blobs[m.id]=new Blob([payload.slice(off,off+m.size)],
+      {type:m.mime||'application/octet-stream'});
+    off+=m.size;
+  }
+  return [manifest,blobs];
+}
+async function parseCvFile(file){
+  return parseCvBuffer(new Uint8Array(await file.arrayBuffer()));
+}
+async function importCvBuffer(buf){
+  const [manifest,blobs]=await parseCvBuffer(buf);
+  const mapId={};
+  const audios={},images={};
+  (manifest.media||[]).forEach(m=>{
+    const blob=blobs[m.id];if(!blob)return;
+    if(m.type==='audio'){const nid=newId('a');mapId[m.id]=nid;audios[nid]=blob;}
+    else if(m.type==='image'){const nid=newId('i');mapId[m.id]=nid;images[nid]=blob;}
+  });
+  const scenes=(manifest.scenes||[]).map(s=>({
+    text:s.text||'',
+    items:(s.items||[]).map(it=>{
+      if(it.type==='audio')return{type:'audio',id:mapId[it.id]||newId('a'),
+        loop:!!it.loop,onClick:!!it.onClick};
+      if(it.type==='image')return{type:'image',id:mapId[it.id]||newId('i')};
+      if(it.type==='stop')return{type:'stop',id:newId('s'),
+        loops:(it.loops||[]).map(x=>mapId[x]).filter(Boolean)};
+      return it;
+    })
+  }));
+  if(dirty)await saveCurrent(true);
+  const now=Date.now();
+  const rec={id:newId('s'),title:(manifest.title||'Импорт')+' · импорт',
+    mode:'scenes',createdAt:now,updatedAt:now,html:'',scenesData:scenes,
+    audios,images};
+  await dbPut(rec);
+  const all=(await dbAll()).sort(byDate);
+  renderSelect(all,rec.id);
+  closeAllSheets();
+  await loadStory(rec.id);
+  toast(ICON.ok+' История импортирована');
+}
+
+/* --- Кнопка «Поделиться» --- */
+$('btnShare').onclick=async()=>{
+  if(currentMode!=='scenes'){toast('Доступно только в режиме сцен');return;}
+  let blob;
+  try{
+    toast('Готовлю файл…');
+    blob=await buildCvBlob();
+  }catch(e){toast('Не удалось собрать файл');return;}
+  const name=sanitizeFileName(currentTitle())+'.cvtxt';
+  const file=new File([blob],name,{type:'application/octet-stream'});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){
+    try{
+      await navigator.share({files:[file],title:file.name});
+      toast(ICON.ok+' Файл отправлен');
+      return;
+    }catch(err){
+      if(err&&err.name==='AbortError')return;
+    }
+  }
+  openExportSheet(blob,name);
+};
+async function openExportSheet(blob,name){
+  const u8=new Uint8Array(await blob.arrayBuffer());
+  const code=CV_BEGIN+'\n'+bufToBase64(u8)+'\n'+CV_END;
+  const kb=(blob.size/1024).toFixed(0);
+  $('exportInfo').textContent=name+' · '+kb+' КБ · код '+(code.length/1024).toFixed(0)+' КБ';
+  $('exportCode').value=code;
+  openSheetEl($('exportSheet'));
+}
+async function copyText(t){
+  try{await navigator.clipboard.writeText(t);return true;}catch(e){}
+  const ta=document.createElement('textarea');
+  ta.value=t;ta.style.cssText='position:fixed;opacity:0;left:0;top:0';
+  document.body.appendChild(ta);ta.focus();ta.select();
+  let ok=false;
+  try{ok=document.execCommand('copy');}catch(e){}
+  ta.remove();return ok;
+}
+$('exportCopy').onclick=async()=>{
+  const ok=await copyText($('exportCode').value);
+  haptic();
+  toast(ok?'Код скопирован — вставьте его в сообщение':
+           'Не вышло скопировать — выделите текст в поле вручную');
+};
+
+/* --- Импорт: файл и код --- */
+$('btnImport').onclick=()=>{if(!importing)cvInput.click();};
+cvInput.addEventListener('change',async()=>{
+  const f=cvInput.files[0];cvInput.value='';
+  if(!f||importing)return;
+  importing=true;
+  try{
+    toast('Читаю файл…');
+    await importCvBuffer(new Uint8Array(await f.arrayBuffer()));
+  }catch(e){
+    toast('Файл не распознан — это не .cvtxt блокнота');
+  }finally{importing=false;}
+});
+$('btnImportCode').onclick=()=>{
+  $('importCode').value='';
+  openSheetEl($('importCodeSheet'));
+};
+$('importCodeOk').onclick=async()=>{
+  if(importing)return;
+  const text=$('importCode').value||'';
+  try{
+    const m=text.split(CV_BEGIN)[1];
+    const body=(m!==undefined?m.split(CV_END)[0]:text).replace(/\s+/g,'');
+    if(!body)throw new Error('empty');
+    importing=true;
+    toast('Распаковываю историю…');
+    await importCvBuffer(base64ToBuf(body));
+  }catch(e){
+    toast('Код не распознан — проверьте, что он скопирован целиком');
+  }finally{importing=false;}
+};
+
+/* ---------- Подготовка данных для просмотра ---------- */
+async function prepareView(id){
+  const rec=await dbGet(id);
+  if(!rec)return null;
+  if(viewPreparedId!==id){
+    for(const v of readerAudios.values())URL.revokeObjectURL(v.url);
+    for(const v of readerImages.values())URL.revokeObjectURL(v.url);
+    readerAudios.clear();readerImages.clear();
+    readerIsCurrent=(id===currentId);
+    if(!readerIsCurrent){
+      for(const[k,blob]of Object.entries(rec.audios||{}))
+        readerAudios.set(k,{blob,url:URL.createObjectURL(blob)});
+      for(const[k,blob]of Object.entries(rec.images||{}))
+        readerImages.set(k,{blob,url:URL.createObjectURL(blob)});
+    }
+    viewPreparedId=id;
+  }
+  readerOpenId=id;viewRec=rec;
+  return rec;
+}
+function cleanView(){
+  for(const v of readerAudios.values())URL.revokeObjectURL(v.url);
+  for(const v of readerImages.values())URL.revokeObjectURL(v.url);
+  readerAudios.clear();readerImages.clear();
+  viewPreparedId=null;viewRec=null;readerOpenId=null;
+}
+function fillReaderPage(rec,id){
+  const htmlSrc=(id===currentId)?editor.innerHTML:(rec.html||'');
+  const page=$('readerPage');
+  page.innerHTML=(htmlSrc&&htmlSrc.trim())?htmlSrc:'<p class="rd-empty">Эта история пока пуста…</p>';
+  page.classList.remove('page-anim');void page.offsetWidth;page.classList.add('page-anim');
+}
+function readerMetaHtml(rec){
+  const nA=Object.keys(rec.audios||{}).length,nI=Object.keys(rec.images||{}).length;
+  return 'обновлена '+dateStr(rec.updatedAt)+' '+timeStr(rec.updatedAt)+
+    ' · '+nA+' аудио · '+nI+' фото · <span class="rmode">режим чтения</span>';
+}
+
+/* ---------- РЕЖИМ ЧТЕНИЯ ---------- */
+async function openReader(id){
+  const pre=await dbGet(id);
+  if(pre&&pre.mode==='scenes'){openSceneReader(id);return;}
+  closeAllSheets();closeCtx();
+  const rec=await prepareView(id);
+  if(!rec){toast('История не найдена');return;}
+  if(scenerOpen){
+    scenerOpen=false;
+    scener.classList.remove('open');scener.setAttribute('aria-hidden','true');
+  }
+  $('readerTitle').textContent=rec.title;
+  $('readerMeta').innerHTML=readerMetaHtml(rec);
+  fillReaderPage(rec,id);
+  reader.classList.add('open');reader.setAttribute('aria-hidden','false');
+  haptic();
+}
+function closeReader(){
+  if(!reader.classList.contains('open'))return;
+  reader.classList.remove('open');reader.setAttribute('aria-hidden','true');
+  if(!scenerOpen)cleanView();
+}
+$('readerBack').onclick=closeReader;
+$('readerEdit').onclick=async()=>{
+  const id=readerOpenId;
+  closeReader();
+  if(scenerOpen)closeScener(true);
+  if(id){
+    if(id!==currentId)await switchToStory(id);
+    toast(ICON.edit+' Режим редактирования');
+  }
+};
+$('readerPage').addEventListener('click',e=>{
+  const a=e.target.closest('.audio-btn');
+  if(a){e.preventDefault();togglePlay(a);return;}
+  const im=e.target.closest('.image-btn');
+  if(im){e.preventDefault();openLightbox(im.dataset.imgId);return;}
+  const sl=e.target.closest('.stoploop-btn');
+  if(sl&&sl.classList.contains('armed')){e.preventDefault();stopBoundLoops(sl);return;}
+  const sp=e.target.closest('.spoiler');
+  if(sp){e.preventDefault();toggleSpoiler(sp);}
+});
+$('readerPage').addEventListener('contextmenu',e=>e.preventDefault());
+$('miReader').onclick=()=>openReader(currentId);
+
+/* ---------- ЧТЕНИЕ ПО СЦЕНАМ ---------- */
+function startSceneAudio(id,loop){
+  const a=getPlayer(id);
+  if(a&&!playingSet.has(id)){
+    cancelFade(a);
+    a.loop=!!loop;
+    try{a.currentTime=0}catch(e){}
+    const p=a.play();if(p&&p.catch)p.catch(()=>{});
+    playingSet.set(id,null);
+    syncPlayingClass();ensureRaf();
+  }
+}
+function enterScene(i){
+  const s=rScenes[i];
+  scIdx=i;
+  (s.items||[]).forEach(it=>{
+    if(it.type==='audio'&&!it.onClick)startSceneAudio(it.id,it.loop);
+    else if(it.type==='stop'){
+      let n=0;
+      (it.loops||[]).forEach(id=>{if(playingSet.has(id)){stopOne(id);n++;}});
+      if(n)buzz([15,50,15]);
+    }
+  });
+  renderSceneView();
+}
+function renderSceneView(){
+  const stage=$('scStage');
+  stage.innerHTML='';
+  $('scMeta').textContent=rScenes.length?
+    ('сцена '+(scIdx+1)+' / '+rScenes.length):'нет сцен';
+  $('scHint').textContent='нажмите — дальше';
+  if(!rScenes.length){
+    stage.innerHTML='<div class="sc-end sc-in"><div class="sc-end-mark">▦</div>'+
+      '<div>Сцен пока нет</div><small>добавьте сцены в редакторе</small></div>';
+    $('scHint').textContent='нажмите — назад';
+    return;
+  }
+  if(scIdx>=rScenes.length){
+    stage.innerHTML='<div class="sc-end sc-in"><div class="sc-end-mark">⋯</div>'+
+      '<div>Конец истории</div><small>нажмите, чтобы вернуться</small></div>';
+    $('scHint').textContent='нажмите — назад';
+    return;
+  }
+  const s=rScenes[scIdx];
+  const tmp=document.createElement('div');tmp.innerHTML=s.text||'';
+  const hasTxt=tmp.textContent.trim()!=='';
+  const visA=(s.items||[]).filter(it=>it.type==='audio'&&it.onClick);
+  const visI=(s.items||[]).filter(it=>it.type==='image');
+  if(!hasTxt&&!visA.length&&!visI.length){
+    stage.innerHTML='<div class="sc-end sc-in"><div class="sc-end-mark">'+ICON.note+'</div>'+
+      '<div>Звуки играют…</div><small>нажмите, чтобы продолжить</small></div>';
+    return;
+  }
+  const card=document.createElement('div');card.className='sc-card sc-in';
+  if(hasTxt){
+    const t=document.createElement('div');t.className='sc-text';
+    t.innerHTML=s.text;card.appendChild(t);
+  }
+  if(visA.length||visI.length){
+    const row=document.createElement('div');row.className='sc-chips';
+    visA.forEach(ad=>row.appendChild(makeAudioChip(ad.id,{loop:ad.loop})));
+    visI.forEach(im=>{
+      const rec=getImageRec(im.id);
+      if(rec)row.appendChild(makeImageChip(im.id,rec.url));
+    });
+    card.appendChild(row);
+  }
+  stage.appendChild(card);
+}
+function scAdvance(){
+  if(!rScenes.length){closeScener();return;}
+  if(scIdx+1>=rScenes.length){scIdx=rScenes.length;renderSceneView();return;}
+  enterScene(scIdx+1);
+}
+function scPrev(){
+  if(!rScenes.length)return;
+  const target=Math.max(0,Math.min(scIdx,rScenes.length)-1)-(scIdx>=rScenes.length?0:1);
+  stopAll();
+  const t=Math.max(0,target);
+  for(let i=0;i<=t;i++)enterScene(i);
+}
+async function openSceneReader(id){
+  closeAllSheets();closeCtx();
+  const rec=await prepareView(id);
+  if(!rec){toast('История не найдена');return;}
+  stopAll();
+  rScenes=(id===currentId&&currentMode==='scenes')?collectScenes():(rec.scenesData||[]);
+  scIdx=-1;
+  $('scTitle').textContent=rec.title;
+  reader.classList.remove('open');
+  scener.classList.add('open');
+  scener.setAttribute('aria-hidden','false');
+  scenerOpen=true;
+  if(rScenes.length)enterScene(0);else renderSceneView();
+  haptic();
+}
+function closeScener(silent){
+  if(!scenerOpen)return;
+  scenerOpen=false;
+  stopAll();
+  scener.classList.remove('open');
+  scener.setAttribute('aria-hidden','true');
+  if(silent)return;
+  if(viewRec&&viewRec.mode!=='scenes'){
+    $('readerTitle').textContent=viewRec.title;
+    $('readerMeta').innerHTML=readerMetaHtml(viewRec);
+    fillReaderPage(viewRec,readerOpenId);
+    reader.classList.add('open');
+    reader.setAttribute('aria-hidden','false');
+  }else{
+    cleanView();
+  }
+}
+$('scStage').addEventListener('click',e=>{
+  const a=e.target.closest('.audio-btn');
+  if(a){e.preventDefault();togglePlay(a);return;}
+  const im=e.target.closest('.image-btn');
+  if(im){e.preventDefault();openLightbox(im.dataset.imgId);return;}
+  const sp=e.target.closest('.spoiler');
+  if(sp){e.preventDefault();toggleSpoiler(sp);return;}
+  if(!rScenes.length){closeScener();return;}
+  if(scIdx>=rScenes.length){closeScener();return;}
+  scAdvance();
+});
+$('scPrev').onclick=e=>{e.stopPropagation();scPrev();haptic();};
+$('scNext').onclick=e=>{e.stopPropagation();scAdvance();haptic();};
+$('scBack').onclick=()=>{closeScener();haptic();};
+$('miScener').onclick=()=>{
+  if(currentMode==='scenes')openSceneReader(currentId);
+  else toast('Сцены доступны только в историях «по сценам»');
+};
+
+/* ---------- РЕДАКТОР ЗВУКА ---------- */
+let actx=null, pvSrc=null, pvGain=null, pvStartCtx=0, pvStartAt=0, pvRaf=0, seekPos=0;
+const editState={id:null,buffer:null,start:0,end:0,gain:1};
+function decodeAudio(a,ab){return new Promise((res,rej)=>a.decodeAudioData(ab,res,rej));}
+async function openAudioEditor(id){
+  const rec=currentAudios.get(id);
+  if(!rec){toast('Файл потерян');return;}
+  if(playingSet.has(id))stopOne(id);
+  editState.id=id;editState.buffer=null;
+  $('aeLoading').hidden=false;$('aeBody').hidden=true;
+  openSheetEl($('audioEditSheet'));
+  try{
+    if(!actx)actx=new (window.AudioContext||window.webkitAudioContext)();
+    if(actx.state==='suspended')await actx.resume();
+    const ab=await rec.blob.arrayBuffer();
+    editState.buffer=await decodeAudio(actx,ab);
+    editState.start=0;editState.end=editState.buffer.duration;editState.gain=1;
+    $('volRange').value=100;$('volVal').textContent='100%';
+    $('aeLoading').hidden=true;$('aeBody').hidden=false;
+    requestAnimationFrame(()=>{drawWave();updateTrimUI();setSeek(0);});
+  }catch(e){closeAllSheets();toast('Не удалось прочитать аудио');}
+}
+function drawWave(){
+  const canvas=$('waveCanvas'),wrap=$('waveWrap');
+  const W=wrap.clientWidth,H=wrap.clientHeight,dpr=window.devicePixelRatio||1;
+  canvas.width=W*dpr;canvas.height=H*dpr;
+  canvas.style.width=W+'px';canvas.style.height=H+'px';
+  const cx=canvas.getContext('2d');cx.scale(dpr,dpr);cx.clearRect(0,0,W,H);
+  const data=editState.buffer.getChannelData(0);
+  const buckets=Math.max(60,W),step=Math.floor(data.length/buckets)||1;
+  for(let i=0;i<buckets;i++){
+    let max=0;const off=i*step;
+    for(let j=0;j<step;j+=8){const v=Math.abs(data[off+j]||0);if(v>max)max=v;}
+    const h=Math.max(2,max*H*.92);
+    cx.fillStyle='rgba(143,161,168,.55)';
+    cx.fillRect(i,(H-h)/2,1,h);
+  }
+}
+function updateTrimUI(){
+  const b=editState.buffer;if(!b)return;
+  const d=b.duration,sPct=editState.start/d*100,ePct=editState.end/d*100;
+  $('hStart').style.left='calc('+sPct.toFixed(2)+'% - 11px)';
+  $('hEnd').style.left='calc('+ePct.toFixed(2)+'% - 11px)';
+  const sel=$('waveSel');
+  sel.style.left=sPct.toFixed(2)+'%';sel.style.width=(ePct-sPct).toFixed(2)+'%';
+  $('tStart').textContent=fmt(editState.start);
+  $('tEnd').textContent=fmt(editState.end);
+  $('tLen').textContent='выбрано '+fmt(editState.end-editState.start);
+}
+function setSeek(t,updateInput=true){
+  const b=editState.buffer;if(!b)return;
+  seekPos=Math.max(0,Math.min(b.duration,t));
+  if(updateInput)$('seekRange').value=Math.round(seekPos/b.duration*1000);
+  $('seekVal').textContent=fmt(seekPos);
+  $('waveHead').style.left=(seekPos/b.duration*100).toFixed(2)+'%';
+}
+function bindHandle(el,which){
+  el.addEventListener('pointerdown',e=>{
+    e.preventDefault();el.setPointerCapture(e.pointerId);haptic();
+    const move=ev=>{
+      if(!editState.buffer)return;
+      const rect=$('waveWrap').getBoundingClientRect();
+      let pct=(ev.clientX-rect.left)/rect.width;
+      pct=Math.max(0,Math.min(1,pct));
+      const t=pct*editState.buffer.duration;
+      if(which==='start')editState.start=Math.min(t,editState.end-0.1);
+      else editState.end=Math.max(t,editState.start+0.1);
+      updateTrimUI();
+    };
+    const up=()=>{el.removeEventListener('pointermove',move);
+      el.removeEventListener('pointerup',up);el.removeEventListener('pointercancel',up);};
+    el.addEventListener('pointermove',move);
+    el.addEventListener('pointerup',up);el.addEventListener('pointercancel',up);
+  });
+}
+bindHandle($('hStart'),'start');bindHandle($('hEnd'),'end');
+function haltPreviewSrc(){
+  if(pvSrc){const s=pvSrc;pvSrc=null;try{s.stop()}catch(e){}}
+  cancelAnimationFrame(pvRaf);
+}
+function playPreview(from){
+  if(!editState.buffer)return;
+  haltPreviewSrc();
+  if(actx.state==='suspended')actx.resume();
+  if(from>=editState.end-0.02)from=editState.start;
+  const src=actx.createBufferSource();src.buffer=editState.buffer;
+  pvGain=actx.createGain();pvGain.gain.value=editState.gain;
+  src.connect(pvGain);pvGain.connect(actx.destination);
+  src.start(0,from,Math.max(.05,editState.end-from));
+  pvSrc=src;pvStartCtx=actx.currentTime;pvStartAt=from;
+  $('aePreview').textContent=PAUSE_GLYPH+' Стоп';
+  src.onended=()=>{
+    if(pvSrc===src){pvSrc=null;cancelAnimationFrame(pvRaf);
+      $('aePreview').textContent='▶ Прослушать';setSeek(editState.start);}
+  };
+  const tick=()=>{
+    if(!pvSrc)return;
+    setSeek(pvStartAt+(actx.currentTime-pvStartCtx));
+    pvRaf=requestAnimationFrame(tick);
+  };
+  pvRaf=requestAnimationFrame(tick);
+}
+$('aePreview').onclick=()=>{
+  if(pvSrc){haltPreviewSrc();$('aePreview').textContent='▶ Прослушать';return;}
+  playPreview(seekPos);
+};
+$('seekRange').addEventListener('input',()=>{
+  const b=editState.buffer;if(!b)return;
+  const t=$('seekRange').value/1000*b.duration;
+  setSeek(t,false);
+  if(pvSrc)playPreview(t);
+});
+$('volRange').addEventListener('input',()=>{
+  editState.gain=$('volRange').value/100;
+  $('volVal').textContent=$('volRange').value+'%';
+  if(pvGain)pvGain.gain.value=editState.gain;
+});
+function encodeWav(channels,sr){
+  const nCh=channels.length,len=channels[0].length;
+  const buf=new ArrayBuffer(44+len*nCh*2),v=new DataView(buf);
+  const ws=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));};
+  ws(0,'RIFF');v.setUint32(4,36+len*nCh*2,true);ws(8,'WAVE');ws(12,'fmt ');
+  v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,nCh,true);
+  v.setUint32(24,sr,true);v.setUint32(28,sr*nCh*2,true);
+  v.setUint16(32,nCh*2,true);v.setUint16(34,16,true);
+  ws(36,'data');v.setUint32(40,len*nCh*2,true);
+  let o=44;
+  for(let i=0;i<len;i++)for(let c=0;c<nCh;c++){
+    let s=Math.max(-1,Math.min(1,channels[c][i]));
+    v.setInt16(o,s<0?s*0x8000:s*0x7FFF,true);o+=2;}
+  return buf;
+}
+$('aeApply').onclick=async()=>{
+  const {buffer,start,end,gain,id}=editState;
+  if(!buffer)return;
+  haltPreviewSrc();
+  const sr=buffer.sampleRate;
+  const s=Math.floor(start*sr),e=Math.max(s+1,Math.floor(end*sr));
+  const chans=[];
+  for(let c=0;c<buffer.numberOfChannels;c++){
+    const d=buffer.getChannelData(c).slice(s,e);
+    if(gain!==1)for(let i=0;i<d.length;i++)d[i]*=gain;
+    chans.push(d);}
+  const blob=new Blob([encodeWav(chans,sr)],{type:'audio/wav'});
+  const oldP=players.get(id);if(oldP){oldP.pause();players.delete(id);}
+  const old=currentAudios.get(id);if(old)URL.revokeObjectURL(old.url);
+  currentAudios.set(id,{blob,url:URL.createObjectURL(blob)});
+  markDirty();closeAllSheets();buzz(18);
+  toast(ICON.ok+' Звук обновлён');
+};
+
+/* ---------- Счётчики / статус ---------- */
+function plainClone(){
+  const c=editor.cloneNode(true);
+  c.querySelectorAll(CHIP_SEL).forEach(b=>b.remove());
+  return c.textContent||'';
+}
+function updateCounters(){
+  if(currentMode==='scenes'){
+    const texts=[...sceneEditor.querySelectorAll('.scc-text')].map(t=>t.textContent).join(' ');
+    const signs=texts.replace(/\s+/g,' ').trim().length;
+    const words=(texts.trim().match(/\S+/g)||[]).length;
+    const nA=sceneEditor.querySelectorAll('.audio-btn').length;
+    const nI=sceneEditor.querySelectorAll('.image-btn').length;
+    const nSL=sceneEditor.querySelectorAll('.stoploop-btn').length;
+    const nSc=sceneEditor.querySelectorAll('.scc').length;
+    $('counters').textContent=signs+' знаков · '+words+' слов · '+nA+' аудио · '+nI+' фото'
+      +(nSL?(' · '+nSL+' '+ICON.stop):'')+' · '+nSc+' сцен';
+    return;
+  }
+  const text=plainClone();
+  const signs=text.replace(/\s+/g,' ').trim().length;
+  const words=(text.trim().match(/\S+/g)||[]).length;
+  const nSL=editor.querySelectorAll('.stoploop-btn').length;
+  const nSp=editor.querySelectorAll('.spoiler').length;
+  $('counters').textContent=signs+' знаков · '+words+' слов · '
+    +editor.querySelectorAll('.audio-btn').length+' аудио · '
+    +editor.querySelectorAll('.image-btn').length+' фото'
+    +(nSL?(' · '+nSL+' '+ICON.stop):'')
+    +(nSp?(' · '+nSp+' '+ICON.sp):'');
+}
+let cntRaf=0;
+function scheduleCounters(){
+  if(cntRaf)return;
+  cntRaf=requestAnimationFrame(()=>{cntRaf=0;updateCounters();});
+}
+function updateEmpty(){
+  if(currentMode==='scenes'){editor.classList.remove('is-empty');return;}
+  editor.classList.toggle('is-empty',
+    !editor.querySelector(CHIP_SEL)&&editor.textContent.trim()==='');
+}
+function renderStatus(){
+  const el=$('saveStatus');
+  if(dirty)el.innerHTML='<span class="warn"><span class="sdot"></span>не сохранено</span>';
+  else if(lastSavedAt)el.innerHTML='<span class="ok">'+ICON.ok+' сохранено '+timeStr(lastSavedAt)+'</span>';
+  else el.textContent='—';
+}
+function markDirty(){dirty=true;renderStatus();updateEmpty();}
+
+/* ---------- Сохранение / загрузка ---------- */
+function currentTitle(){
+  const opt=storySelect.selectedOptions[0];
+  return opt?(opt.dataset.title||opt.textContent):makeTitle();
+}
+async function saveCurrent(silent,flash){
+  if(!currentId)return;
+  let rec;
+  if(currentMode==='scenes'){
+    const scenesData=collectScenes();
+    const usedA=new Set(),usedI=new Set();
+    scenesData.forEach(s=>s.items.forEach(it=>{
+      if(it.type==='audio')usedA.add(it.id);
+      else if(it.type==='image')usedI.add(it.id);
+      else if(it.type==='stop')(it.loops||[]).forEach(id=>usedA.add(id));
+    }));
+    for(const[id,val]of[...currentAudios]){
+      if(!usedA.has(id)){
+        if(playingSet.has(id))stopOne(id);
+        const a=players.get(id);if(a){cancelFade(a);a.pause();}
+        URL.revokeObjectURL(val.url);
+        players.delete(id);currentAudios.delete(id);}
+    }
+    for(const[id,val]of[...currentImages]){
+      if(!usedI.has(id)){URL.revokeObjectURL(val.url);currentImages.delete(id);}
+    }
+    rec={id:currentId,mode:'scenes',title:currentTitle(),
+      createdAt:storyCreatedAt||Date.now(),updatedAt:Date.now(),html:'',scenesData,
+      audios:Object.fromEntries([...currentAudios].map(([id,v])=>[id,v.blob])),
+      images:Object.fromEntries([...currentImages].map(([id,v])=>[id,v.blob]))};
+  }else{
+    const html=editor.innerHTML;
+    const presentA=new Set([...html.matchAll(/data-audio-id="([^"]+)"/g)].map(m=>m[1]));
+    for(const[id,val]of[...currentAudios]){
+      if(!presentA.has(id)){
+        if(playingSet.has(id))stopOne(id);
+        const a=players.get(id);if(a){cancelFade(a);a.pause();}
+        URL.revokeObjectURL(val.url);
+        players.delete(id);currentAudios.delete(id);}
+    }
+    const presentI=new Set([...html.matchAll(/data-img-id="([^"]+)"/g)].map(m=>m[1]));
+    for(const[id,val]of[...currentImages]){
+      if(!presentI.has(id)){URL.revokeObjectURL(val.url);currentImages.delete(id);}
+    }
+    rec={id:currentId,mode:'normal',title:currentTitle(),
+      createdAt:storyCreatedAt||Date.now(),updatedAt:Date.now(),html,
+      audios:Object.fromEntries([...currentAudios].map(([id,v])=>[id,v.blob])),
+      images:Object.fromEntries([...currentImages].map(([id,v])=>[id,v.blob]))};
+  }
+  await dbPut(rec);
+  dirty=false;lastSavedAt=rec.updatedAt;storyCreatedAt=rec.createdAt;
+  viewPreparedId=null;
+  renderStatus();
+  if(flash){const b=$('btnSave');b.classList.add('saved');buzz(18);
+    setTimeout(()=>b.classList.remove('saved'),1400);}
+  if(!silent&&!flash)toast(ICON.ok+' Сохранено');
+}
+async function loadStory(id){
+  stopAll();speechStop();players.clear();closeCtx();
+  lightbox.classList.remove('show');
+  cleanView();
+  for(const v of currentAudios.values())URL.revokeObjectURL(v.url);
+  for(const v of currentImages.values())URL.revokeObjectURL(v.url);
+  currentAudios.clear();currentImages.clear();
+  const rec=await dbGet(id);
+  currentMode=(rec&&rec.mode==='scenes')?'scenes':'normal';
+  if(rec){
+    for(const[k,blob]of Object.entries(rec.audios||{}))
+      currentAudios.set(k,{blob,url:URL.createObjectURL(blob)});
+    for(const[k,blob]of Object.entries(rec.images||{}))
+      currentImages.set(k,{blob,url:URL.createObjectURL(blob)});
+    lastSavedAt=rec.updatedAt;storyCreatedAt=rec.createdAt||rec.updatedAt;
+  }else{lastSavedAt=null;storyCreatedAt=null;}
+  currentId=id;dirty=false;savedRange=null;
+  $('rowInsert').style.display=currentMode==='scenes'?'none':'';
+  $('btnShare').style.display=currentMode==='scenes'?'':'none';
+  if(currentMode==='scenes'){
+    editor.style.display='none';
+    sceneEditor.style.display='';
+    buildSceneCards((rec&&rec.scenesData&&rec.scenesData.length)?
+      rec.scenesData:[{text:'',items:[]}]);
+    $('edHint').textContent='режим сцен — медиа на полке · ⤴ поделиться · зажмите кружок — настройки';
+  }else{
+    editor.style.display='';
+    sceneEditor.style.display='none';
+    editor.innerHTML=rec?(rec.html||''):'';
+    editor.classList.remove('page-anim');void editor.offsetWidth;editor.classList.add('page-anim');
+    $('edHint').textContent='зажмите кружок — меню · ☰ — все работы';
+  }
+  applyKb();
+  updateCounters();updateEmpty();renderStatus();
+}
+function renderSelect(list,selectedId){
+  storySelect.innerHTML='';
+  list.forEach(r=>{const o=document.createElement('option');
+    o.value=r.id;o.dataset.title=r.title;
+    o.textContent=r.title+(r.mode==='scenes'?' · ▦':'');
+    storySelect.appendChild(o);});
+  storySelect.value=selectedId;
+  const cc=$('chipCount');cc.textContent=list.length;
+  cc.classList.remove('pop');void cc.offsetWidth;cc.classList.add('pop');
+}
+async function refreshSelectKeep(){
+  const all=(await dbAll()).sort(byDate);
+  renderSelect(all,currentId);
+}
+async function switchToStory(id){
+  if(id===currentId){toast('Эта история уже открыта');return;}
+  if(dirty)await saveCurrent(true);
+  const all=(await dbAll()).sort(byDate);
+  renderSelect(all,id);
+  await loadStory(id);
+  toast(ICON.read+' История открыта');
+}
+
+/* ---------- Шторки ---------- */
+function showSheetView(v){
+  ['menuMain','menuConfirm','menuInfo'].forEach(i=>$(i).hidden=(i!==v));
+}
+function openSheetEl(el){
+  closeAllSheets();
+  scrim.classList.add('open');el.classList.add('open');
+}
+function closeAllSheets(){
+  scrim.classList.remove('open');
+  document.querySelectorAll('.sheet.open').forEach(s=>s.classList.remove('open'));
+  haltPreviewSrc();
+}
+scrim.addEventListener('click',closeAllSheets);
+document.addEventListener('click',e=>{if(e.target.closest('[data-close]'))closeAllSheets();});
+
+/* ---------- Новая история ---------- */
+$('btnNew').onclick=()=>openSheetEl($('newModeSheet'));
+$('nmNormal').onclick=()=>{closeAllSheets();createStory('normal');};
+$('nmScenes').onclick=()=>{closeAllSheets();createStory('scenes');};
+async function createStory(mode){
+  if(dirty)await saveCurrent(true);
+  const now=Date.now();
+  const rec={id:newId('s'),title:makeTitle(),createdAt:now,updatedAt:now,mode,html:'',
+    scenesData:mode==='scenes'?[{text:'',items:[]}]:undefined,audios:{},images:{}};
+  await dbPut(rec);
+  const all=(await dbAll()).sort(byDate);
+  renderSelect(all,rec.id);
+  await loadStory(rec.id);
+  if(mode==='normal')editor.focus();
+  toast(mode==='scenes'?'▦ Новая история по сценам':'Новая история создана');
+}
+
+/* ---------- СПИСОК РАБОТ ---------- */
+let worksSel=new Set();
+$('btnWorks').onclick=()=>openWorks();
+async function openWorks(){
+  const all=(await dbAll()).sort(byDate);
+  worksSel=new Set([...worksSel].filter(id=>all.some(r=>r.id===id)));
+  renderWorks(all);
+  $('wlMain').hidden=false;$('wlConfirm').hidden=true;
+  openSheetEl($('worksSheet'));
+}
+function renderWorks(all){
+  $('wlCount').textContent=all.length;
+  $('wlSelectAll').textContent=(worksSel.size===all.length&&all.length)?'Снять все':'Выделить все';
+  const list=$('wlList');list.innerHTML='';
+  all.forEach(r=>{
+    const row=document.createElement('div');
+    row.className='wl-row'+(worksSel.has(r.id)?' sel':'');
+    const nA=Object.keys(r.audios||{}).length, nI=Object.keys(r.images||{}).length;
+    row.innerHTML='<span class="wl-check">✓</span>'+
+      '<span class="wl-txt"><b></b><small>'+dateStr(r.updatedAt)+' '+timeStr(r.updatedAt)+
+      ' · '+nA+' аудио · '+nI+' фото'+(r.mode==='scenes'?' · ▦ сцены':'')+'</small></span>'+
+      (r.id===currentId?'<span class="wl-cur">открыта</span>':'');
+    row.querySelector('b').textContent=r.title;
+    const readBtn=document.createElement('button');
+    readBtn.type='button';readBtn.className='wl-read';readBtn.textContent=ICON.read;
+    readBtn.setAttribute('aria-label','Читать: '+r.title);
+    readBtn.onclick=e=>{e.stopPropagation();openReader(r.id);};
+    row.appendChild(readBtn);
+    row.onclick=()=>{
+      worksSel.has(r.id)?worksSel.delete(r.id):worksSel.add(r.id);
+      row.classList.toggle('sel',worksSel.has(r.id));
+      haptic();renderWorksActions(all.length);
+    };
+    list.appendChild(row);
+  });
+  renderWorksActions(all.length);
+}
+function renderWorksActions(total){
+  const box=$('wlActions');box.innerHTML='';
+  const n=worksSel.size;
+  if(n===0){box.innerHTML='<span class="hint">Нажмите на работы, чтобы выбрать их</span>';return;}
+  if(n===1){
+    const id=[...worksSel][0];
+    mkBtn(box,ICON.read+' Читать','teal',()=>{closeAllSheets();openReader(id);});
+    mkBtn(box,'Открыть','',async()=>{closeAllSheets();await switchToStory(id);});
+    mkBtn(box,ICON.edit,'primary',()=>{
+      renameFromWorks=true;closeAllSheets();
+      setTimeout(()=>openRename(id),90);
+    });
+  }else{
+    mkBtn(box,'Снять выбор','',( ()=>{worksSel.clear();openWorks();} ));
+    mkBtn(box,ICON.del+' Удалить ('+n+')','danger-fill',()=>{
+      $('wlConfText').textContent='Выбранные работы ('+n+' шт.) вместе со звуками и фото '+
+        'будут стёрты безвозвратно.';
+      $('wlMain').hidden=true;$('wlConfirm').hidden=false;
+    });
+  }
+}
+$('wlSelectAll').onclick=async()=>{
+  const all=(await dbAll()).sort(byDate);
+  if(worksSel.size===all.length)worksSel.clear();
+  else worksSel=new Set(all.map(r=>r.id));
+  renderWorks(all);haptic();
+};
+$('wlConfClose').onclick=()=>{$('wlMain').hidden=false;$('wlConfirm').hidden=true;};
+$('wlConfCancel').onclick=$('wlConfClose').onclick;
+$('wlConfOk').onclick=async()=>{
+  const ids=[...worksSel];
+  for(const id of ids)await dbDel(id);
+  worksSel.clear();
+  let all=(await dbAll()).sort(byDate);
+  if(!all.length){
+    const now=Date.now();
+    const rec={id:newId('s'),title:makeTitle(),mode:'normal',createdAt:now,updatedAt:now,html:'',audios:{},images:{}};
+    await dbPut(rec);all=[rec];
+  }
+  if(ids.includes(currentId)){
+    renderSelect(all,all[0].id);await loadStory(all[0].id);
+  }else{await refreshSelectKeep();}
+  closeAllSheets();
+  toast(ICON.del+' Удалено работ: '+ids.length);
+};
+
+/* ---------- Переименование ---------- */
+let renameTarget=null, renameFromWorks=false;
+async function openRename(id){
+  renameTarget=id||currentId;
+  const rec=await dbGet(renameTarget);
+  $('renameInput').value=rec?rec.title:'';
+  openSheetEl($('renameSheet'));
+  setTimeout(()=>{$('renameInput').focus();$('renameInput').select();},360);
+}
+async function commitRename(){
+  const val=$('renameInput').value.trim();
+  if(!val){const f=$('renameInput');f.classList.remove('shake');void f.offsetWidth;
+    f.classList.add('shake');buzz([20,40,20]);return;}
+  const rec=await dbGet(renameTarget);
+  if(!rec)return;
+  rec.title=val;await dbPut(rec);
+  if(renameTarget===currentId)await refreshSelectKeep();
+  closeAllSheets();toast(ICON.ok+' Переименовано');
+  if(renameFromWorks){renameFromWorks=false;setTimeout(openWorks,100);}
+}
+$('btnRenameOk').onclick=commitRename;
+$('renameInput').addEventListener('keydown',e=>{if(e.key==='Enter')commitRename();});
+$('btnRename').onclick=()=>openRename(currentId);
+$('overline').onclick=()=>openRename(currentId);
+
+/* ---------- Меню истории ---------- */
+$('btnMenu').onclick=async()=>{
+  $('menuTitle').textContent=currentTitle();
+  $('miReadLabel').textContent=speechBusy?'Остановить озвучку':'Прочитать вслух';
+  showSheetView('menuMain');openSheetEl($('menuSheet'));
+};
+$('miRename').onclick=()=>{closeAllSheets();setTimeout(()=>openRename(currentId),80);};
+$('miDelete').onclick=()=>{
+  $('confirmText').textContent='«'+currentTitle()+
+    '» вместе со всеми звуками и фото будет стёрта безвозвратно.';
+  showSheetView('menuConfirm');
+};
+$('btnCancelDel').onclick=()=>showSheetView('menuMain');
+$('btnConfirmDel').onclick=async()=>{
+  closeAllSheets();
+  await dbDel(currentId);
+  let all=(await dbAll()).sort(byDate);
+  if(!all.length){const now=Date.now();
+    const rec={id:newId('s'),title:makeTitle(),mode:'normal',createdAt:now,updatedAt:now,html:'',audios:{},images:{}};
+    await dbPut(rec);all=[rec];}
+  renderSelect(all,all[0].id);await loadStory(all[0].id);
+  toast(ICON.del+' История удалена');
+};
+$('miInfo').onclick=async()=>{
+  const rec=await dbGet(currentId);if(!rec)return;
+  let signs=0,words=0,nA=0,nI=0;
+  if(currentMode==='scenes'){
+    const texts=collectScenes().map(s=>{
+      const d=document.createElement('div');d.innerHTML=s.text||'';return d.textContent;
+    }).join(' ');
+    signs=texts.replace(/\s+/g,' ').trim().length;
+    words=(texts.trim().match(/\S+/g)||[]).length;
+    nA=sceneEditor.querySelectorAll('.audio-btn').length;
+    nI=sceneEditor.querySelectorAll('.image-btn').length;
+  }else{
+    const text=plainClone();
+    signs=text.replace(/\s+/g,' ').trim().length;
+    words=(text.trim().match(/\S+/g)||[]).length;
+    nA=editor.querySelectorAll('.audio-btn').length;
+    nI=editor.querySelectorAll('.image-btn').length;
+  }
+  let size=0;
+  for(const v of currentAudios.values())size+=v.blob.size;
+  for(const v of currentImages.values())size+=v.blob.size;
+  const mb=(size/1048576).toFixed(1);
+  const stat=(n,l)=>'<div class="stat"><b>'+n+'</b><span>'+l+'</span></div>';
+  $('statGrid').innerHTML=
+    stat(signs,'знаков')+stat(words,'слов')+
+    stat(nA,'аудио')+stat(nI,'фото')+
+    stat(mb+' МБ','занимает')+stat(dateStr(rec.createdAt||rec.updatedAt),'создана');
+  showSheetView('menuInfo');
+};
+
+/* ---------- Озвучка ---------- */
+const speech=('speechSynthesis'in window);
+let speechBusy=false;
+function speechStop(){
+  if(!speech)return;
+  speechSynthesis.cancel();
+  if(speechBusy){speechBusy=false;$('miReadLabel').textContent='Прочитать вслух';}
+}
+$('miRead').onclick=()=>{
+  if(!speech){toast('Озвучка не поддерживается устройством');return;}
+  if(speechBusy){speechStop();toast('Озвучка остановлена');return;}
+  let text='';
+  if(currentMode==='scenes'){
+    text=collectScenes().map(s=>{
+      const d=document.createElement('div');d.innerHTML=s.text||'';return d.textContent;
+    }).join('\n').trim();
+  }else text=plainClone().trim();
+  if(!text){toast('Текст пуст');return;}
+  const u=new SpeechSynthesisUtterance(text);u.lang='ru-RU';
+  u.onend=u.onerror=()=>{speechBusy=false;$('miReadLabel').textContent='Прочитать вслух';};
+  speechSynthesis.cancel();speechSynthesis.speak(u);
+  speechBusy=true;$('miReadLabel').textContent='Остановить озвучку';
+  toast(ICON.speech+' Читаю вслух…');
+};
+
+/* ---------- Панель форматирования ---------- */
+function updateBubble(){
+  const sel=window.getSelection();
+  let show=false;
+  if(sel&&sel.rangeCount&&!sel.isCollapsed){
+    const r=sel.getRangeAt(0);
+    if(inEditable(r.commonAncestorContainer)&&String(sel).trim())show=true;
+  }
+  if(show){
+    const rect=sel.getRangeAt(0).getBoundingClientRect();
+    const x=Math.max(150,Math.min(rect.left+rect.width/2,window.innerWidth-150));
+    const y=Math.min(rect.bottom+10,window.innerHeight-58);
+    bubble.style.left=x+'px';bubble.style.top=y+'px';
+  }
+  bubble.classList.toggle('show',show);
+}
+bubble.addEventListener('pointerdown',e=>e.preventDefault());
+bubble.addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.cmd){
+    try{document.execCommand(b.dataset.cmd,false,null);}catch(err){}
+    haptic();
+  }else if(b.dataset.color){
+    try{document.execCommand('foreColor',false,b.dataset.color);}catch(err){}
+    haptic();
+  }else if(b.dataset.spoiler!==undefined){
+    const sel=window.getSelection();
+    if(sel.rangeCount&&!sel.isCollapsed){
+      pendingSpoilerRange=sel.getRangeAt(0).cloneRange();
+      bubble.classList.remove('show');
+      $('spDurRange').value=2;$('spDurVal').textContent='2 с';
+      openSheetEl($('spoilerSheet'));
+    }
+  }
+});
+try{document.execCommand('styleWithCSS',false,false);
+    document.execCommand('defaultParagraphSeparator',false,'p');}catch(e){}
+
+/* ---------- Кнопки панели ---------- */
+$('btnAudio').onclick=()=>fileInput.click();
+fileInput.addEventListener('change',()=>{
+  const f=fileInput.files[0];fileInput.value='';
+  if(!f)return;
+  if(!(f.type.startsWith('audio/')||/\.mp3$/i.test(f.name))){
+    toast('Нужен аудиофайл .mp3');
+    buzz([20,40,20]);return;
+  }
+  if(currentMode==='scenes'&&pendingShelf){
+    const id=newId('a');
+    currentAudios.set(id,{blob:f,url:URL.createObjectURL(f)});
+    const chip=makeAudioChip(id,{});
+    chip.classList.add('pop-in');
+    chip.addEventListener('animationend',()=>chip.classList.remove('pop-in'),{once:true});
+    pendingShelf.insertBefore(chip,pendingShelf.querySelector('.scc-add'));
+    pendingShelf=null;
+    markDirty();scheduleCounters();haptic();
+    toast(ICON.note+' Звук добавлен в сцену');
+    return;
+  }
+  insertAudioButton(f);haptic();
+  toast(ICON.note+' Звук вставлен — нажмите на кружок');
+});
+$('btnPhoto').onclick=()=>imgInput.click();
+imgInput.addEventListener('change',()=>{
+  const f=imgInput.files[0];imgInput.value='';
+  if(!f)return;
+  if(!f.type.startsWith('image/')){
+    toast('Нужно изображение');
+    return;
+  }
+  if(currentMode==='scenes'&&pendingShelf){
+    const id=newId('i');
+    const url=URL.createObjectURL(f);
+    currentImages.set(id,{blob:f,url});
+    const chip=makeImageChip(id,url);
+    chip.classList.add('pop-in');
+    chip.addEventListener('animationend',()=>chip.classList.remove('pop-in'),{once:true});
+    pendingShelf.insertBefore(chip,pendingShelf.querySelector('.scc-add'));
+    pendingShelf=null;
+    markDirty();scheduleCounters();haptic();
+    toast(ICON.photo+' Фото добавлено в сцену');
+    return;
+  }
+  insertImageButton(f);haptic();
+  toast(ICON.photo+' Фото вставлено — нажмите, чтобы открыть');
+});
+$('btnStopLoop').onclick=()=>{
+  insertStopLoopChip();haptic();
+  toast(ICON.stop+' Кнопка «Стоп» вставлена — зажмите её, чтобы привязать звуки');
+};
+$('btnSave').onclick=()=>saveCurrent(false,true);
+storySelect.addEventListener('change',async()=>{
+  const id=storySelect.value;
+  if(!id||id===currentId)return;
+  if(dirty)await saveCurrent(true);
+  await loadStory(id);haptic();
+});
+
+/* ---------- Backspace ---------- */
+editor.addEventListener('keydown',e=>{
+  if(e.key!=='Backspace')return;
+  const sel=window.getSelection();
+  if(!sel.isCollapsed||!sel.rangeCount)return;
+  const r=sel.getRangeAt(0);let prev=null;
+  if(r.startContainer.nodeType===3){if(r.startOffset===0)prev=r.startContainer.previousSibling;}
+  else if(r.startOffset>0)prev=r.startContainer.childNodes[r.startOffset-1];
+  if(isChip(prev)){
+    e.preventDefault();
+    if(prev.classList.contains('audio-btn')){
+      const id=prev.dataset.audioId;
+      if(playingSet.has(id))stopOne(id);
+    }
+    prev.remove();markDirty();scheduleCounters();haptic();}
+});
+
+/* ---------- Реакция редакторов, автосейв ---------- */
+editor.addEventListener('input',()=>{markDirty();scheduleCounters();});
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='hidden'&&dirty)saveCurrent(true);
+});
+window.addEventListener('pagehide',()=>{if(dirty)saveCurrent(true);});
+setInterval(()=>{if(dirty)saveCurrent(true);},20000);
+
+/* ---------- Первый запуск ---------- */
+const WELCOME_HTML=
+ '<p>Это интерактивный блокнот: здесь текст живёт вместе со звуком и фото.</p>'+
+ '<p>Кнопка «＋ Новая» предлагает два режима. Обычный: звуки, фото и стопы прямо в тексте. '+
+ '«По сценам»: история из сцен — сверху полка медиа (♪ ▨ ■), ниже текст сцены.</p>'+
+ '<p>В режиме сцен кнопка ⤴ упаковывает историю со всеми звуками и фото в файл .cvtxt и '+
+ 'отправляет его через меню «Поделиться» — например, в Telegram. Получатель сохраняет файл '+
+ 'и открывает его здесь через ☰ → «⭳ Файл».</p>'+
+ '<p>Зажатие кружка звука — настройки: обрезать, громкость, зациклить ↻, «проигрывать по клику». '+
+ 'Для историй «по сценам» доступно «Чтение по сценам» — как визуальная новелла.</p>'+
+ '<p>Выделите текст — появится панель «Ж К Ч ▓» и кружки цвета. Все работы — по кнопке ☰.</p>';
+(async function init(){
+  const d=new Date();
+  $('overline').childNodes[0].textContent='тетрадь · '+
+    d.toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric'})+' ';
+  applyKb();
+  detectNavPad();
+  try{db=await openDB();}
+  catch(e){$('saveStatus').textContent='Хранилище недоступно';return;}
+  let all=(await dbAll()).sort(byDate);
+  if(!all.length){
+    const now=Date.now();
+    const rec={id:newId('s'),title:makeTitle(),mode:'normal',createdAt:now,updatedAt:now,
+      html:WELCOME_HTML,audios:{},images:{}};
+    await dbPut(rec);all=[rec];
+  }
+  renderSelect(all,all[0].id);
+  await loadStory(all[0].id);
+})();
+</script>
+
+<script>
+/* PWA: офлайн-кэш (service worker) */
+if('serviceWorker' in navigator){
+  window.addEventListener('load',function(){
+    navigator.serviceWorker.register('sw.js').catch(function(){});
+  });
+}
+</script>
+</body>
+</html>
